@@ -18,7 +18,10 @@ from execution import (
     KalshiMarketLineProvider,
     WeeklyExecutionRunner,
 )
-from strategy.mlb import UnderdogStrategy
+from strategy.mlb import GameTotalUnderStrategy, UnderdogStrategy
+
+
+STRATEGY_NAMES = ["underdog", "game_total_under"]
 
 
 def parse_market_types(values: list[str] | None) -> set[str] | None:
@@ -43,6 +46,8 @@ def load_env_file(path: Path = Path(".env")) -> None:
 
 
 def build_strategy(name: str, *, stake_cents: int) -> Any:
+    if name == "game_total_under":
+        return GameTotalUnderStrategy(stake_cents=stake_cents)
     if name == "underdog":
         return UnderdogStrategy(stake_cents=stake_cents)
     raise ValueError(f"unknown strategy: {name}")
@@ -54,11 +59,13 @@ def default_market_types(strategy_name: str, market_types: list[str] | None) -> 
         return parsed
     if strategy_name == "underdog":
         return {"game_moneyline"}
+    if strategy_name == "game_total_under":
+        return {"game_total"}
     return None
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--strategy", default="underdog", choices=["underdog"])
+    parser.add_argument("--strategy", default="underdog", choices=STRATEGY_NAMES)
     parser.add_argument("--timezone", default="America/New_York")
     parser.add_argument("--stake-cents", type=int, default=100)
     parser.add_argument("--max-order-stake-cents", type=int, default=100)

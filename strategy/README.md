@@ -85,3 +85,13 @@ run = strategy.evaluate(lines)
 
 `UnderdogStrategy` expects `game_moneyline` lines and emits one YES buy action
 for the lowest YES ask in each game.
+
+```python
+from strategy.mlb import GameTotalUnderStrategy
+
+strategy = GameTotalUnderStrategy(stake_cents=100)
+run = strategy.evaluate(lines)
+```
+
+`GameTotalUnderStrategy` expects `game_total` lines and emits a NO buy action
+for each line where the under price is between 40 and 60 cents.
