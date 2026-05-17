@@ -10,6 +10,7 @@ const outputPath = path.join(repoRoot, "website/public/data/trade-status.json");
 const SAFE_FIELDS = [
   "id",
   "gameDate",
+  "settledAt",
   "checkedDate",
   "engine",
   "status",
@@ -100,6 +101,7 @@ function sanitizedBet(row: CsvRow, index: number): SanitizedBet {
   const record = {
     id: `${dateOnly(row.occurrence_datetime)}-${index}`,
     gameDate: dateOnly(row.occurrence_datetime || row.expected_expiration_time),
+    settledAt: row.settlement_ts || row.expiration_time || row.expected_expiration_time || row.close_time || "",
     checkedDate: dateOnly(row.checked_time_utc),
     engine: row.engine || "kalshi",
     status,
@@ -113,7 +115,7 @@ function sanitizedBet(row: CsvRow, index: number): SanitizedBet {
     pnlDollars,
     marketTitle: row.title || "",
     marketSubtitle: row.subtitle || row.yes_sub_title || row.no_sub_title || "",
-    marketResult: row.market_result || row.expiration_value || "",
+    marketResult: row.market_result || row.expiration_value || (status === "open" ? "open" : ""),
     marketStatus: row.market_status || "",
   };
   return Object.fromEntries(SAFE_FIELDS.map((field) => [field, record[field]])) as SanitizedBet;

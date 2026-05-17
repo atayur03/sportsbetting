@@ -36,7 +36,10 @@ npm run export-status
 npm run dev
 ```
 
-The filters above the chart apply to the summary, graph, and table. The first
-chart shows cumulative closed-bet P&L overall and by strategy. The table
-underneath shows sanitized status rows and supports click-to-sort column
-headers.
+The filters above the chart apply to the summary, graph, and table. Strategy,
+sport, and status filters support include and exclude selections, so a view can
+include MLB while excluding another league when more sports are present.
+
+The first chart shows cumulative closed-bet P&L overall and by strategy. The
+table underneath shows sanitized status rows with pagination, column visibility
+controls, click-to-sort headers, and draggable column resize handles.

@@ -8,7 +8,7 @@ import {
   EMPTY_FILTERS,
   filterBets,
   filterOptions,
-  groupClosedBetsByDate,
+  groupClosedBetsBySettlement,
   summarizeBets,
   type StatusBet,
   type StatusFilters as StatusFiltersState,
@@ -47,17 +47,19 @@ export function App() {
     () => filteredBets.filter((bet) => bet.status === "won" || bet.status === "lost"),
     [filteredBets],
   );
-  const chartRows = useMemo(() => groupClosedBetsByDate(closedBets), [closedBets]);
+  const chartRows = useMemo(() => groupClosedBetsBySettlement(closedBets), [closedBets]);
   const summary = useMemo(() => summarizeBets(filteredBets), [filteredBets]);
 
   return (
     <main className="dashboard-shell">
       <header className="dashboard-header">
-        <div>
-          <p className="eyebrow">Execution status</p>
-          <h1>Trade Results</h1>
-        </div>
       </header>
+
+      <SummaryStats summary={summary} />
+
+      <section className="panel chart-panel" aria-label="Closed bet result graph">
+        <ResultsChart rows={chartRows} />
+      </section>
 
       <StatusFilters
         filters={filters}
@@ -67,26 +69,8 @@ export function App() {
         onChange={setFilters}
       />
 
-      <SummaryStats summary={summary} />
-
-      <section className="panel chart-panel" aria-label="Closed bet result graph">
-        <div className="panel-heading">
-          <div>
-            <h2>Performance</h2>
-            <p>Total and strategy-level cumulative result by game date.</p>
-          </div>
-        </div>
-        <ResultsChart rows={chartRows} />
-      </section>
-
       <section className="panel table-panel" aria-label="Trade status table">
-        <div className="panel-heading">
-          <div>
-            <h2>Status Table</h2>
-            <p>Sanitized fields only. Tickers, order IDs, client IDs, and rule text are excluded.</p>
-          </div>
-        </div>
-        <StatusTable bets={filteredBets} />
+        <StatusTable bets={filteredBets} totalRows={bets.length} />
       </section>
     </main>
   );

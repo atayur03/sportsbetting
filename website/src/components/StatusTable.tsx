@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { money, type StatusBet } from "../lib/statusData";
+import { formatDate, formatDateTime, formatStrategy, money, type StatusBet } from "../lib/statusData";
 
 type StatusTableProps = {
   bets: StatusBet[];
+  totalRows: number;
 };
 
 type SortDirection = "asc" | "desc";
@@ -24,21 +25,33 @@ type Column = {
   key: SortKey;
   label: string;
   numeric?: boolean;
+  defaultWidth: number;
+  render: (bet: StatusBet) => string | number;
 };
 
+const PAGE_SIZES = [10, 25, 50, 100];
+
 const COLUMNS: Column[] = [
-  { key: "gameDate", label: "Game date" },
-  { key: "status", label: "Status" },
-  { key: "strategy", label: "Strategy" },
-  { key: "sport", label: "Sport" },
-  { key: "side", label: "Side" },
-  { key: "contracts", label: "Contracts", numeric: true },
-  { key: "stakeDollars", label: "Stake", numeric: true },
-  { key: "priceDollars", label: "Price", numeric: true },
-  { key: "pnlDollars", label: "P&L", numeric: true },
-  { key: "marketTitle", label: "Market" },
-  { key: "marketResult", label: "Result" },
+  { key: "gameDate", label: "Game date", defaultWidth: 132, render: (bet) => formatDate(bet.gameDate) },
+  { key: "status", label: "Status", defaultWidth: 118, render: (bet) => bet.status },
+  { key: "strategy", label: "Strategy", defaultWidth: 180, render: (bet) => formatStrategy(bet.strategy) },
+  { key: "sport", label: "Sport", defaultWidth: 92, render: (bet) => bet.sport },
+  { key: "side", label: "Side", defaultWidth: 104, render: (bet) => bet.side },
+  { key: "contracts", label: "Contracts", numeric: true, defaultWidth: 112, render: (bet) => bet.contracts },
+  { key: "stakeDollars", label: "Stake", numeric: true, defaultWidth: 112, render: (bet) => money(bet.stakeDollars) },
+  { key: "priceDollars", label: "Price", numeric: true, defaultWidth: 108, render: (bet) => money(bet.priceDollars) },
+  {
+    key: "pnlDollars",
+    label: "P&L",
+    numeric: true,
+    defaultWidth: 108,
+    render: (bet) => money(bet.pnlDollars),
+  },
+  { key: "marketTitle", label: "Market", defaultWidth: 320, render: (bet) => bet.marketTitle },
+  { key: "marketResult", label: "Result", defaultWidth: 132, render: (bet) => bet.marketResult },
 ];
+
+const DEFAULT_VISIBLE_COLUMNS = COLUMNS.map((column) => column.key);
 
 function sortValue(bet: StatusBet, key: SortKey): string | number {
   const value = bet[key];
@@ -66,81 +79,244 @@ function nextDirection(currentKey: SortKey, nextKey: SortKey, currentDirection: 
   return currentDirection === "asc" ? "desc" : "asc";
 }
 
-export function StatusTable({ bets }: StatusTableProps) {
+function defaultColumnWidths(): Record<SortKey, number> {
+  return Object.fromEntries(COLUMNS.map((column) => [column.key, column.defaultWidth])) as Record<SortKey, number>;
+}
+
+export function StatusTable({ bets, totalRows }: StatusTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("gameDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
+  const [visibleColumns, setVisibleColumns] = useState<SortKey[]>(DEFAULT_VISIBLE_COLUMNS);
+  const [columnWidths, setColumnWidths] = useState<Record<SortKey, number>>(defaultColumnWidths);
 
   const sortedBets = useMemo(
     () => [...bets].sort((a, b) => compareBets(a, b, sortKey, sortDirection)),
     [bets, sortDirection, sortKey],
   );
+  const pageCount = Math.max(1, Math.ceil(sortedBets.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageRows = sortedBets.slice(pageStart, pageStart + pageSize);
+  const selectedColumns = COLUMNS.filter((column) => visibleColumns.includes(column.key));
+  const tableWidth = selectedColumns.reduce((total, column) => total + columnWidths[column.key], 0);
+  const latestClosingTimestamp = useMemo(() => {
+    const timestamps = bets
+      .filter((bet) => bet.status !== "open")
+      .map((bet) => bet.settledAt)
+      .filter(Boolean)
+      .sort();
+    return timestamps[timestamps.length - 1] || "";
+  }, [bets]);
+  const latestClosingLabel = latestClosingTimestamp ? formatDateTime(latestClosingTimestamp) : "No closed markets";
+
+  useEffect(() => {
+    setPage(1);
+  }, [bets.length, pageSize]);
+
+  function toggleColumn(key: SortKey): void {
+    setVisibleColumns((currentColumns) => {
+      if (currentColumns.includes(key)) {
+        if (currentColumns.length === 1) {
+          return currentColumns;
+        }
+        return currentColumns.filter((columnKey) => columnKey !== key);
+      }
+      return [...currentColumns, key];
+    });
+  }
+
+  function startColumnResize(key: SortKey, clientX: number): void {
+    const startWidth = columnWidths[key];
+    const onMove = (event: MouseEvent) => {
+      const nextWidth = Math.max(72, startWidth + event.clientX - clientX);
+      setColumnWidths((currentWidths) => ({ ...currentWidths, [key]: nextWidth }));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   if (!bets.length) {
     return (
-      <div className="empty-state">
-        Export status data with <code>npm run export-status</code> from the website folder.
-      </div>
+      <>
+        <div className="panel-heading">
+          <div>
+            <h2>Positions</h2>
+            <p>Last updated: {latestClosingLabel}</p>
+          </div>
+        </div>
+        <div className="empty-state">
+          {totalRows
+            ? "No rows match the current filters."
+            : "Export status data with npm run export-status from the website folder."}
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
+    <div className="status-table-wrap">
+      <div className="panel-heading">
+        <div>
+          <h2>Positions</h2>
+          <p>Last updated: {latestClosingLabel}</p>
+        </div>
+        <details className="table-menu">
+          <summary aria-label="Table options">⋮</summary>
+          <div className="table-menu-panel">
+            <label className="rows-menu-control">
+              <span>Rows per page</span>
+              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+                {PAGE_SIZES.map((size) => (
+                  <option value={size} key={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="table-menu-section-title">Visible columns</div>
             {COLUMNS.map((column) => (
-              <th
-                key={column.key}
-                className={column.numeric ? "numeric-cell" : undefined}
-                aria-sort={
-                  sortKey === column.key
-                    ? sortDirection === "asc"
-                      ? "ascending"
-                      : "descending"
-                    : "none"
-                }
-              >
-                <button
-                  type="button"
-                  className="sort-button"
-                  onClick={() => {
-                    setSortDirection(nextDirection(sortKey, column.key, sortDirection));
-                    setSortKey(column.key);
-                  }}
-                >
-                  <span>{column.label}</span>
-                  <span className="sort-indicator" aria-hidden="true">
-                    {sortKey === column.key ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
-                  </span>
-                </button>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedBets.map((bet) => (
-            <tr key={bet.id}>
-              <td>{bet.gameDate || ""}</td>
-              <td>
-                <span className="status-pill" data-status={bet.status}>
-                  {bet.status}
+              <label className="column-toggle-row" key={column.key}>
+                <span>{column.label}</span>
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.includes(column.key)}
+                  onChange={() => toggleColumn(column.key)}
+                />
+                <span className="column-toggle-track" aria-hidden="true">
+                  <span className="column-toggle-thumb" />
                 </span>
-              </td>
-              <td>{bet.strategy}</td>
-              <td>{bet.sport}</td>
-              <td>{bet.side}</td>
-              <td className="numeric-cell">{bet.contracts}</td>
-              <td className="numeric-cell">{money(bet.stakeDollars)}</td>
-              <td className="numeric-cell">{money(bet.priceDollars)}</td>
-              <td className="numeric-cell">
-                {bet.status === "won" || bet.status === "lost" ? money(bet.pnlDollars) : ""}
-              </td>
-              <td>{bet.marketTitle}</td>
-              <td>{bet.marketResult}</td>
+              </label>
+            ))}
+          </div>
+        </details>
+      </div>
+
+      <div className="table-scroll">
+        <table style={{ minWidth: tableWidth }}>
+          <colgroup>
+            {selectedColumns.map((column) => (
+              <col key={column.key} style={{ width: columnWidths[column.key] }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {selectedColumns.map((column) => (
+                <th
+                  key={column.key}
+                  className={column.numeric ? "numeric-cell" : undefined}
+                  aria-sort={
+                    sortKey === column.key
+                      ? sortDirection === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  <button
+                    type="button"
+                    className="sort-button"
+                    onClick={() => {
+                      setSortDirection(nextDirection(sortKey, column.key, sortDirection));
+                      setSortKey(column.key);
+                    }}
+                  >
+                    <span>{column.label}</span>
+                    <span className="sort-indicator" aria-hidden="true">
+                      {sortKey === column.key ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="resize-handle"
+                    aria-label={`Resize ${column.label} column`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      startColumnResize(column.key, event.clientX);
+                    }}
+                  />
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pageRows.map((bet) => (
+              <tr key={bet.id}>
+                {selectedColumns.map((column) => {
+                  const value = column.render(bet);
+                  if (column.key === "status") {
+                    return (
+                      <td className="status-cell" data-status={bet.status} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "side") {
+                    return (
+                      <td className="side-cell" data-side={bet.side} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "sport") {
+                    return (
+                      <td className="sport-cell" data-sport={bet.sport.toLowerCase()} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "marketResult") {
+                    return (
+                      <td className="result-cell" data-result={String(value).toLowerCase()} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "pnlDollars") {
+                    const pnlState =
+                      bet.status === "open" ? "open" : bet.pnlDollars > 0 ? "positive" : bet.pnlDollars < 0 ? "negative" : "flat";
+                    return (
+                      <td className="numeric-cell pnl-cell" data-pnl={pnlState} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td className={column.numeric ? "numeric-cell" : undefined} key={column.key}>
+                      {value}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="table-footer">
+        <span>
+          {pageStart + 1}-{Math.min(pageStart + pageSize, sortedBets.length)} of {sortedBets.length}
+        </span>
+        <div className="table-page-buttons">
+          <span>
+            Page {safePage} of {pageCount}
+          </span>
+          <button type="button" disabled={safePage === 1} onClick={() => setPage((currentPage) => currentPage - 1)}>
+            Prev
+          </button>
+          <button
+            type="button"
+            disabled={safePage === pageCount}
+            onClick={() => setPage((currentPage) => currentPage + 1)}
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

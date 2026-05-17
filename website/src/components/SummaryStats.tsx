@@ -13,7 +13,7 @@ export function SummaryStats({ summary }: SummaryStatsProps) {
     ["Lost", summary.lost],
     ["Win rate", formatRate(summary.winRate)],
     ["Staked", money(summary.staked)],
-    ["Closed P&L", money(summary.netPnl)],
+    ["Realized P&L", money(summary.netPnl)],
   ];
 
   return (

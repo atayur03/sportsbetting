@@ -3,6 +3,7 @@ export type TradeStatus = "open" | "won" | "lost" | "unknown" | string;
 export type StatusBet = {
   id: string;
   gameDate: string;
+  settledAt: string;
   checkedDate: string;
   engine: string;
   status: TradeStatus;
@@ -40,23 +41,34 @@ export type StatusSummary = {
 
 export type ChartRow = {
   date: string;
+  settledAt: string;
   total: number;
   strategies: Record<string, number>;
 };
 
 export type StatusFilters = {
-  strategy: string;
-  sport: string;
-  status: string;
+  strategyInclude: string[];
+  strategyExclude: string[];
+  sportInclude: string[];
+  sportExclude: string[];
+  statusInclude: string[];
+  statusExclude: string[];
+  sideInclude: string[];
+  sideExclude: string[];
   startDate: string;
   endDate: string;
   query: string;
 };
 
 export const EMPTY_FILTERS: StatusFilters = {
-  strategy: "",
-  sport: "",
-  status: "",
+  strategyInclude: [],
+  strategyExclude: [],
+  sportInclude: [],
+  sportExclude: [],
+  statusInclude: [],
+  statusExclude: [],
+  sideInclude: [],
+  sideExclude: [],
   startDate: "",
   endDate: "",
   query: "",
@@ -66,9 +78,12 @@ export type FilterOptions = {
   strategies: string[];
   sports: string[];
   statuses: string[];
+  sides: string[];
   minDate: string;
   maxDate: string;
 };
+
+const SUPPORTED_SPORTS = ["MLB", "NBA", "NFL", "NHL"];
 
 export function money(value: number | string | null | undefined): string {
   const amount = Number(value || 0);
@@ -85,6 +100,56 @@ export function formatRate(value: number): string {
     return "0.0%";
   }
   return `${(value * 100).toFixed(1)}%`;
+}
+
+export function formatDate(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) {
+    return value;
+  }
+  return `${month}/${day}/${year}`;
+}
+
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return formatDate(value.slice(0, 10));
+  }
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const year = parsed.getFullYear();
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${month}/${day}/${year} ${hours}:${minutes}`;
+}
+
+export function dateOnly(value: string | null | undefined): string {
+  return value ? value.slice(0, 10) : "";
+}
+
+export function formatStrategy(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const explicitLabels: Record<string, string> = {
+    initial_test: "Initial Test",
+    underdog: "Underdog",
+    game_total_under: "Game Total Under",
+  };
+  if (explicitLabels[value]) {
+    return explicitLabels[value];
+  }
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 export function summarizeBets(bets: StatusBet[]): StatusSummary {
@@ -118,23 +183,37 @@ export function filterOptions(bets: StatusBet[]): FilterOptions {
   const dates = bets.map((bet) => bet.gameDate).filter(Boolean).sort();
   return {
     strategies: [...new Set(bets.map((bet) => bet.strategy).filter(Boolean))].sort(),
-    sports: [...new Set(bets.map((bet) => bet.sport).filter(Boolean))].sort(),
+    sports: [...new Set([...SUPPORTED_SPORTS, ...bets.map((bet) => bet.sport).filter(Boolean)])].sort(),
     statuses: [...new Set(bets.map((bet) => bet.status).filter(Boolean))].sort(),
+    sides: [...new Set(bets.map((bet) => bet.side).filter(Boolean))].sort(),
     minDate: dates[0] || "",
     maxDate: dates[dates.length - 1] || "",
   };
 }
 
+function passesSetFilter(value: string, include: string[], exclude: string[]): boolean {
+  if (exclude.includes(value)) {
+    return false;
+  }
+  if (include.length > 0 && !include.includes(value)) {
+    return false;
+  }
+  return true;
+}
+
 export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet[] {
   const query = filters.query.trim().toLowerCase();
   return bets.filter((bet) => {
-    if (filters.strategy && bet.strategy !== filters.strategy) {
+    if (!passesSetFilter(bet.strategy, filters.strategyInclude, filters.strategyExclude)) {
       return false;
     }
-    if (filters.sport && bet.sport !== filters.sport) {
+    if (!passesSetFilter(bet.sport, filters.sportInclude, filters.sportExclude)) {
       return false;
     }
-    if (filters.status && bet.status !== filters.status) {
+    if (!passesSetFilter(String(bet.status), filters.statusInclude, filters.statusExclude)) {
+      return false;
+    }
+    if (!passesSetFilter(bet.side, filters.sideInclude, filters.sideExclude)) {
       return false;
     }
     if (filters.startDate && bet.gameDate < filters.startDate) {
@@ -148,6 +227,7 @@ export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet
         bet.gameDate,
         bet.status,
         bet.strategy,
+        formatStrategy(bet.strategy),
         bet.sport,
         bet.side,
         bet.marketTitle,
@@ -163,27 +243,30 @@ export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet
   });
 }
 
-export function groupClosedBetsByDate(closedBets: StatusBet[]): ChartRow[] {
-  const dates = [...new Set(closedBets.map((bet) => bet.gameDate).filter(Boolean))].sort();
+export function groupClosedBetsBySettlement(closedBets: StatusBet[]): ChartRow[] {
   const strategies = [...new Set(closedBets.map((bet) => bet.strategy || "unknown"))].sort();
   const cumulativeByStrategy: Record<string, number> = Object.fromEntries(
     strategies.map((strategy) => [strategy, 0]),
   );
   let cumulativeTotal = 0;
 
-  return dates.map((date) => {
-    const betsForDate = closedBets.filter((bet) => bet.gameDate === date);
-    for (const bet of betsForDate) {
+  return [...closedBets]
+    .sort((a, b) => {
+      const aTime = a.settledAt || a.gameDate;
+      const bTime = b.settledAt || b.gameDate;
+      return aTime.localeCompare(bTime);
+    })
+    .map((bet) => {
       const strategy = bet.strategy || "unknown";
       const pnl = Number(bet.pnlDollars || 0);
       cumulativeByStrategy[strategy] = (cumulativeByStrategy[strategy] || 0) + pnl;
       cumulativeTotal += pnl;
-    }
 
-    return {
-      date,
-      total: cumulativeTotal,
-      strategies: { ...cumulativeByStrategy },
-    };
-  });
+      return {
+        date: dateOnly(bet.settledAt) || bet.gameDate,
+        settledAt: bet.settledAt,
+        total: cumulativeTotal,
+        strategies: { ...cumulativeByStrategy },
+      };
+    });
 }
