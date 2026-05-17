@@ -13,5 +13,6 @@ __pycache__/
 kalshi/markets/data/*.csv
 kalshi/markets/data/raw/*.json
 kalshi/trading/data/*.csv
+execution/data/*.csv
 scrapers/espn/data/raw/espn/mlb/summary/**/*.json
 scrapers/espn/data/raw/espn/mlb/summary/**/*.json.gz

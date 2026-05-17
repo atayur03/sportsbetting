@@ -18,6 +18,9 @@ from execution import (
     KalshiMarketLineProvider,
     WeeklyExecutionRunner,
 )
+from execution.schedules.daily import parse_run_date
+from execution.schedules.date_range import iter_dates
+from execution.status import DEFAULT_TRADE_LOG_PATH, DEFAULT_TRADE_STATUS_DIR, refresh_trade_status_csv, trade_status_path_for_date
 from strategy.mlb import GameTotalUnderStrategy, UnderdogStrategy
 
 
@@ -80,6 +83,29 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Submit real orders. Requires KALSHI_ALLOW_LIVE_TRADING=true in the environment.",
     )
+    parser.add_argument(
+        "--skip-status-refresh",
+        action="store_true",
+        help="Do not refresh date-scoped trade status CSVs after execution.",
+    )
+    parser.add_argument(
+        "--status-output-dir",
+        type=Path,
+        default=DEFAULT_TRADE_STATUS_DIR,
+        help="Directory for date-scoped trade status CSVs.",
+    )
+    parser.add_argument(
+        "--status-market-lookup-timeout",
+        type=int,
+        default=8,
+        help="HTTP timeout in seconds for each status market lookup.",
+    )
+    parser.add_argument(
+        "--status-market-lookup-retries",
+        type=int,
+        default=1,
+        help="Retries for each status market lookup.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -124,6 +150,51 @@ def build_execution_objects(args: argparse.Namespace):
     return strategy, market_types, provider, engine
 
 
+def count_statuses(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row.get("trade_status") or "")
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def execution_dates(args: argparse.Namespace) -> list[dt.date]:
+    if args.window == "daily":
+        return [parse_run_date(args.date)]
+    if args.window == "weekly":
+        start_date = parse_run_date(args.date)
+        return iter_dates(start_date, start_date + dt.timedelta(days=7))
+    if args.window == "date-range":
+        return iter_dates(args.start_date, args.end_date)
+    raise ValueError(f"unknown execution window: {args.window}")
+
+
+def refresh_status_for_execution_dates(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if args.skip_status_refresh:
+        return []
+    if not DEFAULT_TRADE_LOG_PATH.exists():
+        return []
+
+    summaries: list[dict[str, Any]] = []
+    for run_date in execution_dates(args):
+        rows = refresh_trade_status_csv(
+            run_date=run_date,
+            timezone=args.timezone,
+            output_dir=args.status_output_dir,
+            market_lookup_timeout=args.status_market_lookup_timeout,
+            market_lookup_retries=args.status_market_lookup_retries,
+        )
+        summaries.append(
+            {
+                "date": run_date.isoformat(),
+                "output_path": str(trade_status_path_for_date(run_date, output_dir=args.status_output_dir)),
+                "rows": len(rows),
+                "counts": count_statuses(rows),
+            }
+        )
+    return summaries
+
+
 def main() -> None:
     args = parse_args()
     strategy, market_types, provider, engine = build_execution_objects(args)
@@ -144,6 +215,10 @@ def main() -> None:
         )
     else:
         raise ValueError(f"unknown execution window: {args.window}")
+
+    status_summaries = refresh_status_for_execution_dates(args)
+    if status_summaries:
+        result.metadata["trade_status_csvs"] = status_summaries
 
     print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
 
