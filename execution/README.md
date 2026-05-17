@@ -124,9 +124,59 @@ python -m execution.run weekly --strategy underdog --date 2026-05-17
 python -m execution.run date-range --strategy underdog --start-date 2026-05-17 --end-date 2026-05-24
 ```
 
-All CLI modes dry-run by default. Add `--live` only when you want real orders.
+Available strategies:
+
+- `underdog`: MLB game moneyline, buy YES on the underdog.
+- `game_total_under`: MLB full-game totals, buy NO on lines priced between 40 and 60 cents.
+
+All CLI modes dry-run by default. Add `--live` only when you want real orders:
+
+```bash
+python -m execution.run daily --strategy underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.run daily --strategy game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+```
+
+Daily execution refreshes the date-scoped trade status CSV after the run. Use
+`--skip-status-refresh` if you only want discovery/order execution:
+
+```bash
+python -m execution.run daily --strategy underdog --date 2026-05-17 --skip-status-refresh
+```
 
 For live trading, set both:
 
 - `ExecutionConfig(mode="live")`
 - `KALSHI_ALLOW_LIVE_TRADING=true` in `.env`
+
+Trade status dashboard:
+
+Real trades are appended to `kalshi/trading/data/real_trade_log.csv`. Status
+dashboards are written by game date:
+
+```text
+execution/data/trade_status_YYYY-MM-DD.csv
+```
+
+To update one date manually, run:
+
+```bash
+python -m execution.status --date 2026-05-17
+```
+
+That reads the trade log, filters to games on that local date, checks only
+unresolved rows by default, and writes:
+
+```text
+execution/data/trade_status_2026-05-17.csv
+```
+
+Useful status commands:
+
+```bash
+python -m execution.status --date 2026-05-17
+python -m execution.status --date 2026-05-17 --refresh-all
+python -m execution.status --date 2026-05-17 --market-lookup-timeout 15 --market-lookup-retries 2
+```
+
+The status CSVs and real trade log are ignored by git because they can contain
+real trade/account metadata.
