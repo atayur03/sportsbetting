@@ -1,0 +1,3 @@
+*test*
+scrapers/espn/data/raw/espn/mlb/summary/**/*.json
+scrapers/espn/data/raw/espn/mlb/summary/**/*.json.gz
