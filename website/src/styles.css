@@ -374,10 +374,30 @@ h2 {
   padding: 12px;
 }
 
+.summary-tile[data-tone="blue"] {
+  border-color: #bfdbfe;
+  background: #e0eefc;
+  color: #1d4ed8;
+}
+
+.summary-tile[data-tone="green"] {
+  border-color: #bbf7d0;
+  background: #dff5e8;
+  color: #166534;
+}
+
+.summary-tile[data-tone="red"] {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .summary-tile span {
   display: block;
-  color: #6b7280;
+  color: currentColor;
   font-size: 0.78rem;
+  font-weight: 800;
+  opacity: 0.82;
 }
 
 .summary-tile strong {
@@ -518,6 +538,11 @@ h2 {
 
 .chart-tooltip-row strong {
   color: #172033;
+}
+
+.chart-axis-tick {
+  fill: #6b7280;
+  font-size: 12px;
 }
 
 svg {
@@ -886,13 +911,13 @@ td {
 }
 
 .simulation-cell[data-simulated="false"] {
-  background: #f1f5f9;
-  color: #334155;
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .simulation-cell[data-simulated="true"] {
-  background: #fef3c7;
-  color: #92400e;
+  background: #dc2626;
+  color: #ffffff;
 }
 
 .status-cell[data-status="won"] {

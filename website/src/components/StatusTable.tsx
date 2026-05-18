@@ -13,6 +13,7 @@ import {
 type StatusTableProps = {
   bets: StatusBet[];
   totalRows: number;
+  generatedAt: string;
 };
 
 type SortDirection = "asc" | "desc";
@@ -48,7 +49,6 @@ const COLUMNS: Column[] = [
   { key: "strategy", label: "Strategy", defaultWidth: 180, render: (bet) => formatStrategy(bet.strategy) },
   { key: "engine", label: "Engine", defaultWidth: 112, render: (bet) => formatEngine(bet.engine) },
   { key: "sport", label: "Sport", defaultWidth: 92, render: (bet) => bet.sport },
-  { key: "side", label: "Side", defaultWidth: 104, render: (bet) => bet.side },
   { key: "contracts", label: "Contracts", numeric: true, defaultWidth: 112, render: (bet) => bet.contracts },
   { key: "stakeDollars", label: "Stake", numeric: true, defaultWidth: 112, render: (bet) => money(bet.stakeDollars) },
   { key: "priceDollars", label: "Price", numeric: true, defaultWidth: 108, render: (bet) => money(bet.priceDollars) },
@@ -59,11 +59,12 @@ const COLUMNS: Column[] = [
     defaultWidth: 108,
     render: (bet) => money(bet.pnlDollars),
   },
+  { key: "side", label: "Side", defaultWidth: 104, render: (bet) => bet.side },
   { key: "marketTitle", label: "Market", defaultWidth: 320, render: (bet) => bet.marketTitle },
   { key: "marketResult", label: "Result", defaultWidth: 132, render: (bet) => bet.marketResult },
 ];
 
-const DEFAULT_VISIBLE_COLUMNS = COLUMNS.map((column) => column.key);
+const DEFAULT_VISIBLE_COLUMNS = COLUMNS.map((column) => column.key).filter((key) => key !== "simulated");
 
 function sortValue(bet: StatusBet, key: SortKey): string | number {
   const value = bet[key];
@@ -95,7 +96,7 @@ function defaultColumnWidths(): Record<SortKey, number> {
   return Object.fromEntries(COLUMNS.map((column) => [column.key, column.defaultWidth])) as Record<SortKey, number>;
 }
 
-export function StatusTable({ bets, totalRows }: StatusTableProps) {
+export function StatusTable({ bets, totalRows, generatedAt }: StatusTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("gameDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageSize, setPageSize] = useState(25);
@@ -113,15 +114,7 @@ export function StatusTable({ bets, totalRows }: StatusTableProps) {
   const pageRows = sortedBets.slice(pageStart, pageStart + pageSize);
   const selectedColumns = COLUMNS.filter((column) => visibleColumns.includes(column.key));
   const tableWidth = selectedColumns.reduce((total, column) => total + columnWidths[column.key], 0);
-  const latestClosingTimestamp = useMemo(() => {
-    const timestamps = bets
-      .filter((bet) => bet.status !== "open")
-      .map((bet) => bet.settledAt)
-      .filter(Boolean)
-      .sort();
-    return timestamps[timestamps.length - 1] || "";
-  }, [bets]);
-  const latestClosingLabel = latestClosingTimestamp ? formatDateTime(latestClosingTimestamp) : "No closed markets";
+  const lastUpdatedLabel = generatedAt ? formatDateTime(generatedAt) : "No export found";
 
   useEffect(() => {
     setPage(1);
@@ -159,7 +152,7 @@ export function StatusTable({ bets, totalRows }: StatusTableProps) {
         <div className="panel-heading">
           <div>
             <h2>Positions</h2>
-            <p>Last updated: {latestClosingLabel}</p>
+            <p>Last updated: {lastUpdatedLabel}</p>
           </div>
         </div>
         <div className="empty-state">
@@ -176,7 +169,7 @@ export function StatusTable({ bets, totalRows }: StatusTableProps) {
       <div className="panel-heading">
         <div>
           <h2>Positions</h2>
-          <p>Last updated: {latestClosingLabel}</p>
+          <p>Last updated: {lastUpdatedLabel}</p>
         </div>
         <details className="table-menu">
           <summary aria-label="Table options">⋮</summary>

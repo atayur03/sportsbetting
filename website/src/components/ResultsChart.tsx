@@ -6,6 +6,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type TickItem,
   type TooltipProps,
 } from "recharts";
 import { useMemo, useState } from "react";
@@ -29,6 +30,13 @@ type ChartDatum = {
   settledAt: string;
   total: number;
   [strategy: string]: number | string;
+};
+
+type AxisTickProps = {
+  x?: number;
+  y?: number;
+  payload?: TickItem;
+  maxTimestamp: number;
 };
 
 function timestampForRow(row: ChartRow): number {
@@ -59,6 +67,20 @@ function formatTimestamp(value: number | string): string {
   return formatDateTime(new Date(timestamp).toISOString());
 }
 
+function formatAxisTimestamp(value: number | string): string {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+  const parsed = new Date(timestamp);
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const year = String(parsed.getFullYear()).slice(-2);
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${month}/${day}/${year} ${hours}:${minutes}`;
+}
+
 function chartData(rows: ChartRow[], strategies: string[], bucketMs: number): ChartDatum[] {
   const dataByBucket = new Map<number, ChartDatum>();
 
@@ -82,6 +104,17 @@ function chartData(rows: ChartRow[], strategies: string[], bucketMs: number): Ch
 
 function formatLegendValue(value: string): string {
   return value === "total" ? "Total" : formatStrategy(value);
+}
+
+function TimeAxisTick({ x = 0, y = 0, payload, maxTimestamp }: AxisTickProps) {
+  const value = Number(payload?.value);
+  const isRightEdge = value === maxTimestamp;
+
+  return (
+    <text className="chart-axis-tick" x={x + (isRightEdge ? 24 : 4)} y={y + 16} textAnchor={isRightEdge ? "end" : "start"}>
+      {formatAxisTimestamp(value)}
+    </text>
+  );
 }
 
 function ChartTooltip({ active, payload }: TooltipProps<number, string>) {
@@ -171,8 +204,8 @@ export function ResultsChart({ rows }: ResultsChartProps) {
               type="number"
               scale="time"
               domain={xDomain}
-              tick={{ fill: "#6b7280", fontSize: 12 }}
-              tickFormatter={(value) => formatTimestamp(value)}
+              tick={(props) => <TimeAxisTick {...props} maxTimestamp={maxTimestamp} />}
+              tickFormatter={(value) => formatAxisTimestamp(value)}
               tickLine={false}
             />
             <YAxis

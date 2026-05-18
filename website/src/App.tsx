@@ -21,6 +21,7 @@ type LoadState = "loading" | "ready" | "missing";
 
 export function App() {
   const [bets, setBets] = useState<StatusBet[]>([]);
+  const [generatedAt, setGeneratedAt] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [filters, setFilters] = useState<StatusFiltersState>(EMPTY_FILTERS);
 
@@ -34,10 +35,12 @@ export function App() {
       })
       .then((payload) => {
         setBets(Array.isArray(payload.bets) ? payload.bets : []);
+        setGeneratedAt(payload.generatedAt || "");
         setLoadState("ready");
       })
       .catch(() => {
         setBets([]);
+        setGeneratedAt("");
         setLoadState("missing");
       });
   }, []);
@@ -78,7 +81,7 @@ export function App() {
       />
 
       <section className="panel table-panel" aria-label="Trade status table">
-        <StatusTable bets={filteredBets} totalRows={bets.length} />
+        <StatusTable bets={filteredBets} totalRows={bets.length} generatedAt={generatedAt} />
       </section>
     </main>
   );
