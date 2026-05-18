@@ -95,3 +95,19 @@ run = strategy.evaluate(lines)
 
 `GameTotalUnderStrategy` expects `game_total` lines and emits a NO buy action
 for each line where the under price is between 40 and 60 cents.
+
+Inverted strategies:
+
+```python
+from strategy import InvertedStrategy
+from strategy.mlb import GameTotalUnderStrategy
+
+strategy = InvertedStrategy(GameTotalUnderStrategy(stake_cents=100))
+run = strategy.evaluate(lines)
+```
+
+`InvertedStrategy` wraps any existing strategy without changing its market
+inputs. It flips YES actions to NO, flips NO actions to YES, changes the limit
+price to `100 - original_limit_price_cents`, and exposes the strategy name as
+`inverted_{base_strategy_name}`. Existing strategy names and behavior are
+unchanged unless you explicitly wrap them.

@@ -5,6 +5,7 @@ not import Kalshi or submit orders directly.
 """
 
 from strategy.interface import Strategy
+from strategy.inverted import InvertedStrategy, inverted_strategy_name
 from strategy.registry import (
     normalize_supported_sports_leagues,
     strategies_for_sports_league,
@@ -18,6 +19,8 @@ __all__ = [
     "Strategy",
     "StrategyRun",
     "WagerAction",
+    "InvertedStrategy",
+    "inverted_strategy_name",
     "normalize_supported_sports_leagues",
     "strategies_for_sports_league",
     "strategy_metadata",

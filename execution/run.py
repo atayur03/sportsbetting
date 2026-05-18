@@ -21,10 +21,12 @@ from execution import (
 from execution.schedules.daily import parse_run_date
 from execution.schedules.date_range import iter_dates
 from execution.status import DEFAULT_TRADE_LOG_PATH, DEFAULT_TRADE_STATUS_DIR, refresh_trade_status_csv, trade_status_path_for_date
+from strategy import InvertedStrategy
 from strategy.mlb import GameTotalUnderStrategy, UnderdogStrategy
 
 
-STRATEGY_NAMES = ["underdog", "game_total_under"]
+BASE_STRATEGY_NAMES = ["underdog", "game_total_under"]
+STRATEGY_NAMES = BASE_STRATEGY_NAMES + [f"inverted_{strategy_name}" for strategy_name in BASE_STRATEGY_NAMES]
 
 
 def parse_market_types(values: list[str] | None) -> set[str] | None:
@@ -48,7 +50,23 @@ def load_env_file(path: Path = Path(".env")) -> None:
             os.environ[key] = value
 
 
-def build_strategy(name: str, *, stake_cents: int) -> Any:
+def base_strategy_name(name: str) -> str:
+    return name.removeprefix("inverted_")
+
+
+def inverted_strategy_name(name: str) -> str:
+    return f"inverted_{base_strategy_name(name)}"
+
+
+def normalize_strategy_name(name: str, *, inverted: bool = False) -> str:
+    if not inverted:
+        return name
+    if name.startswith("inverted_"):
+        return base_strategy_name(name)
+    return inverted_strategy_name(name)
+
+
+def build_base_strategy(name: str, *, stake_cents: int) -> Any:
     if name == "game_total_under":
         return GameTotalUnderStrategy(stake_cents=stake_cents)
     if name == "underdog":
@@ -56,19 +74,32 @@ def build_strategy(name: str, *, stake_cents: int) -> Any:
     raise ValueError(f"unknown strategy: {name}")
 
 
+def build_strategy(name: str, *, stake_cents: int) -> Any:
+    base_strategy = build_base_strategy(base_strategy_name(name), stake_cents=stake_cents)
+    if name.startswith("inverted_"):
+        return InvertedStrategy(base_strategy)
+    return base_strategy
+
+
 def default_market_types(strategy_name: str, market_types: list[str] | None) -> set[str] | None:
     parsed = parse_market_types(market_types)
     if parsed is not None:
         return parsed
-    if strategy_name == "underdog":
+    base_name = base_strategy_name(strategy_name)
+    if base_name == "underdog":
         return {"game_moneyline"}
-    if strategy_name == "game_total_under":
+    if base_name == "game_total_under":
         return {"game_total"}
     return None
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--strategy", default="underdog", choices=STRATEGY_NAMES)
+    parser.add_argument(
+        "--inverted",
+        action="store_true",
+        help="Toggle inversion for the selected strategy. Base names become inverted_*; inverted_* names return to base.",
+    )
     parser.add_argument("--timezone", default="America/New_York")
     parser.add_argument("--stake-cents", type=int, default=100)
     parser.add_argument("--max-order-stake-cents", type=int, default=100)
@@ -137,8 +168,9 @@ def build_execution_objects(args: argparse.Namespace):
     if args.live:
         KalshiConfig.from_env()
 
-    strategy = build_strategy(args.strategy, stake_cents=args.stake_cents)
-    market_types = default_market_types(args.strategy, args.market_types)
+    strategy_name = normalize_strategy_name(args.strategy, inverted=args.inverted)
+    strategy = build_strategy(strategy_name, stake_cents=args.stake_cents)
+    market_types = default_market_types(strategy_name, args.market_types)
     provider = KalshiMarketLineProvider()
     engine = KalshiExecutionEngine(
         config=ExecutionConfig(

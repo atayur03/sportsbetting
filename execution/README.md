@@ -128,12 +128,29 @@ Available strategies:
 
 - `underdog`: MLB game moneyline, buy YES on the underdog.
 - `game_total_under`: MLB full-game totals, buy NO on lines priced between 40 and 60 cents.
+- `inverted_underdog`: same MLB moneyline inputs as `underdog`, but flips each YES action to NO.
+- `inverted_game_total_under`: same MLB game-total inputs as `game_total_under`, but flips each NO action to YES.
+
+The inverted strategies are wrappers around the base strategies. Base strategy
+names remain backwards compatible, and the CLI automatically uses the base
+strategy's required market type when you choose an `inverted_*` strategy.
+You can also use `--inverted` as a toggle:
+
+```bash
+python -m execution.run daily --strategy underdog --inverted --date 2026-05-17
+python -m execution.run daily --strategy inverted_underdog --inverted --date 2026-05-17
+```
+
+The first command runs `inverted_underdog`. The second toggles back to
+`underdog`.
 
 All CLI modes dry-run by default. Add `--live` only when you want real orders:
 
 ```bash
 python -m execution.run daily --strategy underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
 python -m execution.run daily --strategy game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.run daily --strategy inverted_underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.run daily --strategy inverted_game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
 ```
 
 Daily execution refreshes the date-scoped trade status CSV after the run. Use
