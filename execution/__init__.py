@@ -6,6 +6,7 @@ the logged Kalshi trading API.
 """
 
 from execution.kalshi import (
+    DEFAULT_SIMULATED_TRADE_LOG_PATH,
     KalshiExecutionEngine,
     KalshiExecutionEngineInterface,
     KalshiMarketLineProvider,
@@ -30,6 +31,7 @@ __all__ = [
     "ExecutionConfig",
     "ExecutionResult",
     "ExecutionTarget",
+    "DEFAULT_SIMULATED_TRADE_LOG_PATH",
     "KalshiExecutionEngine",
     "KalshiExecutionEngineInterface",
     "KalshiMarketLineProvider",

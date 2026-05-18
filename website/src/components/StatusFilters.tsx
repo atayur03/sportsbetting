@@ -1,6 +1,13 @@
 import { useState } from "react";
 
-import { EMPTY_FILTERS, formatDate, formatStrategy, type FilterOptions, type StatusFilters } from "../lib/statusData";
+import {
+  EMPTY_FILTERS,
+  formatDate,
+  formatEngine,
+  formatStrategy,
+  type FilterOptions,
+  type StatusFilters,
+} from "../lib/statusData";
 
 type StatusFiltersProps = {
   filters: StatusFilters;
@@ -14,15 +21,22 @@ type ListFilterKey =
   | "strategyExclude"
   | "sportExclude"
   | "statusExclude"
-  | "sideExclude";
+  | "sideExclude"
+  | "engineExclude";
 
-type IncludeFilterKey = "strategyInclude" | "sportInclude" | "statusInclude" | "sideInclude";
+type IncludeFilterKey =
+  | "strategyInclude"
+  | "sportInclude"
+  | "statusInclude"
+  | "sideInclude"
+  | "engineInclude";
 
 const INCLUDE_KEY_BY_EXCLUDE_KEY: Record<ListFilterKey, IncludeFilterKey> = {
   strategyExclude: "strategyInclude",
   sportExclude: "sportInclude",
   statusExclude: "statusInclude",
   sideExclude: "sideInclude",
+  engineExclude: "engineInclude",
 };
 
 type FilterGroupProps = {
@@ -49,6 +63,25 @@ function toggleExcludedValue(filters: StatusFilters, key: ListFilterKey, value: 
 
 function updateTextFilter(filters: StatusFilters, key: "startDate" | "endDate" | "query", value: string): StatusFilters {
   return { ...filters, [key]: value };
+}
+
+type ModeFilter = "real" | "simulated" | "both";
+
+function selectedMode(filters: StatusFilters): ModeFilter {
+  if (filters.simulatedInclude.includes("real")) {
+    return "real";
+  }
+  if (filters.simulatedInclude.includes("simulated")) {
+    return "simulated";
+  }
+  return "both";
+}
+
+function updateModeFilter(filters: StatusFilters, mode: ModeFilter): StatusFilters {
+  if (mode === "both") {
+    return { ...filters, simulatedInclude: [], simulatedExclude: [] };
+  }
+  return { ...filters, simulatedInclude: [mode], simulatedExclude: [] };
 }
 
 function searchPlaceholder(label: string): string {
@@ -145,6 +178,7 @@ export function StatusFilters({
   onChange,
 }: StatusFiltersProps) {
   const [open, setOpen] = useState(false);
+  const mode = selectedMode(filters);
 
   return (
     <section className="panel filters-panel" aria-label="Status filters">
@@ -156,6 +190,19 @@ export function StatusFilters({
           </p>
         </div>
         <div className="filters-actions">
+          <div className="mode-segmented-control" aria-label="Mode filter">
+            {(["real", "simulated", "both"] as const).map((modeOption) => (
+              <button
+                type="button"
+                key={modeOption}
+                data-active={mode === modeOption}
+                data-mode={modeOption}
+                onClick={() => onChange(updateModeFilter(filters, modeOption))}
+              >
+                {formatEngine(modeOption)}
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={() => setOpen((currentOpen) => !currentOpen)}>
             {open ? "Hide Filters" : "Show Filters"}
           </button>
@@ -195,6 +242,13 @@ export function StatusFilters({
               values={options.sides}
               excludeValues={filters.sideExclude}
               onToggle={(value) => onChange(toggleExcludedValue(filters, "sideExclude", value))}
+            />
+            <FilterGroup
+              label="Engine"
+              formatValue={formatEngine}
+              values={options.engines}
+              excludeValues={filters.engineExclude}
+              onToggle={(value) => onChange(toggleExcludedValue(filters, "engineExclude", value))}
             />
           </div>
 

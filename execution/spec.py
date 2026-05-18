@@ -9,8 +9,9 @@ from typing import Any, Literal
 from strategy import WagerAction
 
 
-ExecutionMode = Literal["dry_run", "live"]
+ExecutionMode = Literal["dry_run", "simulation", "live"]
 Venue = Literal["kalshi"]
+Engine = Literal["kalshi"]
 
 
 def utc_now_iso() -> str:
@@ -55,14 +56,18 @@ class ExecutionConfig:
     allowed_strategies: set[str] | None = None
 
     def __post_init__(self) -> None:
-        if self.mode not in {"dry_run", "live"}:
-            raise ValueError("mode must be 'dry_run' or 'live'")
+        if self.mode not in {"dry_run", "simulation", "live"}:
+            raise ValueError("mode must be 'dry_run', 'simulation', or 'live'")
         if self.max_order_stake_cents <= 0:
             raise ValueError("max_order_stake_cents must be positive")
 
     @property
     def dry_run(self) -> bool:
-        return self.mode != "live"
+        return self.mode == "dry_run"
+
+    @property
+    def simulation(self) -> bool:
+        return self.mode == "simulation"
 
     def validate(self, action: WagerAction) -> None:
         if self.allowed_strategies is not None and action.strategy not in self.allowed_strategies:

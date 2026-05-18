@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const statusDir = path.join(repoRoot, "execution/data");
+const simulationStatusRoot = path.join(statusDir, "simulations");
 const outputPath = path.join(repoRoot, "website/public/data/trade-status.json");
 
 const SAFE_FIELDS = [
@@ -13,6 +14,7 @@ const SAFE_FIELDS = [
   "settledAt",
   "checkedDate",
   "engine",
+  "simulated",
   "status",
   "strategy",
   "sport",
@@ -30,7 +32,7 @@ const SAFE_FIELDS = [
 
 type CsvRow = Record<string, string>;
 type SafeField = (typeof SAFE_FIELDS)[number];
-type SanitizedBet = Record<SafeField, string | number>;
+type SanitizedBet = Record<SafeField, string | number | boolean>;
 
 function parseCsv(text: string): CsvRow[] {
   const rows: string[][] = [];
@@ -91,7 +93,27 @@ function numberValue(value: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function sanitizedBet(row: CsvRow, index: number): SanitizedBet {
+async function readStatusFiles(rootDir: string, simulated: boolean): Promise<{ filePath: string; simulated: boolean }[]> {
+  let entries;
+  try {
+    entries = await readdir(rootDir, { withFileTypes: true });
+  } catch (error: unknown) {
+    return [];
+  }
+
+  const files: { filePath: string; simulated: boolean }[] = [];
+  for (const entry of entries) {
+    const entryPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await readStatusFiles(entryPath, simulated)));
+    } else if (/^trade_status_\d{4}-\d{2}-\d{2}\.csv$/.test(entry.name)) {
+      files.push({ filePath: entryPath, simulated });
+    }
+  }
+  return files;
+}
+
+function sanitizedBet(row: CsvRow, index: number, simulated: boolean): SanitizedBet {
   const status = (row.trade_status || "unknown").toLowerCase();
   const contracts = numberValue(row.count);
   const priceDollars = numberValue(row.price_at_placement_dollars || row.limit_price_dollars);
@@ -104,6 +126,7 @@ function sanitizedBet(row: CsvRow, index: number): SanitizedBet {
     settledAt: row.settlement_ts || row.expiration_time || row.expected_expiration_time || row.close_time || "",
     checkedDate: dateOnly(row.checked_time_utc),
     engine: row.engine || "kalshi",
+    simulated,
     status,
     strategy: row.strategy || "unknown",
     sport: row.sports_league || "",
@@ -122,15 +145,18 @@ function sanitizedBet(row: CsvRow, index: number): SanitizedBet {
 }
 
 async function main(): Promise<void> {
-  const files = (await readdir(statusDir))
-    .filter((file) => /^trade_status_\d{4}-\d{2}-\d{2}\.csv$/.test(file))
-    .sort();
+  const realFiles = await readStatusFiles(statusDir, false);
+  const simulationFiles = await readStatusFiles(simulationStatusRoot, true);
+  const files = [
+    ...realFiles.filter(({ filePath }) => !filePath.includes(`${path.sep}simulations${path.sep}`)),
+    ...simulationFiles,
+  ].sort((a, b) => a.filePath.localeCompare(b.filePath));
 
   const bets: SanitizedBet[] = [];
   for (const file of files) {
-    const csv = await readFile(path.join(statusDir, file), "utf8");
+    const csv = await readFile(file.filePath, "utf8");
     const rows = parseCsv(csv);
-    rows.forEach((row, index) => bets.push(sanitizedBet(row, bets.length + index)));
+    rows.forEach((row, index) => bets.push(sanitizedBet(row, bets.length + index, file.simulated)));
   }
 
   await mkdir(path.dirname(outputPath), { recursive: true });

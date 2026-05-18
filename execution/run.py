@@ -11,6 +11,7 @@ from typing import Any
 
 from kalshi import KalshiConfig
 from execution import (
+    DEFAULT_SIMULATED_TRADE_LOG_PATH,
     DailyExecutionRunner,
     DateRangeExecutionRunner,
     ExecutionConfig,
@@ -20,13 +21,14 @@ from execution import (
 )
 from execution.schedules.daily import parse_run_date
 from execution.schedules.date_range import iter_dates
-from execution.status import DEFAULT_TRADE_LOG_PATH, DEFAULT_TRADE_STATUS_DIR, refresh_trade_status_csv, trade_status_path_for_date
+from execution.status import refresh_trade_status_csvs_for_date
 from strategy import InvertedStrategy
 from strategy.mlb import GameTotalUnderStrategy, UnderdogStrategy
 
 
 BASE_STRATEGY_NAMES = ["underdog", "game_total_under"]
 STRATEGY_NAMES = BASE_STRATEGY_NAMES + [f"inverted_{strategy_name}" for strategy_name in BASE_STRATEGY_NAMES]
+ENGINE_NAMES = ["kalshi"]
 
 
 def parse_market_types(values: list[str] | None) -> set[str] | None:
@@ -94,6 +96,7 @@ def default_market_types(strategy_name: str, market_types: list[str] | None) -> 
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--engine", required=True, choices=ENGINE_NAMES)
     parser.add_argument("--strategy", default="underdog", choices=STRATEGY_NAMES)
     parser.add_argument(
         "--inverted",
@@ -109,21 +112,21 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         dest="market_types",
         help="Market type to include. Can be repeated. Defaults to strategy-specific discovery.",
     )
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--live",
         action="store_true",
         help="Submit real orders. Requires KALSHI_ALLOW_LIVE_TRADING=true in the environment.",
+    )
+    mode_group.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Assume orders fill successfully and write simulated trade/status CSVs.",
     )
     parser.add_argument(
         "--skip-status-refresh",
         action="store_true",
         help="Do not refresh date-scoped trade status CSVs after execution.",
-    )
-    parser.add_argument(
-        "--status-output-dir",
-        type=Path,
-        default=DEFAULT_TRADE_STATUS_DIR,
-        help="Directory for date-scoped trade status CSVs.",
     )
     parser.add_argument(
         "--status-market-lookup-timeout",
@@ -171,23 +174,19 @@ def build_execution_objects(args: argparse.Namespace):
     strategy_name = normalize_strategy_name(args.strategy, inverted=args.inverted)
     strategy = build_strategy(strategy_name, stake_cents=args.stake_cents)
     market_types = default_market_types(strategy_name, args.market_types)
+    if args.engine != "kalshi":
+        raise ValueError(f"unsupported engine: {args.engine}")
     provider = KalshiMarketLineProvider()
+    mode = "live" if args.live else "simulation" if args.simulate else "dry_run"
     engine = KalshiExecutionEngine(
         config=ExecutionConfig(
-            mode="live" if args.live else "dry_run",
+            mode=mode,
             max_order_stake_cents=args.max_order_stake_cents,
             allowed_strategies={strategy.name},
-        )
+        ),
+        simulation_trade_log_path=DEFAULT_SIMULATED_TRADE_LOG_PATH,
     )
     return strategy, market_types, provider, engine
-
-
-def count_statuses(rows: list[dict[str, Any]]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for row in rows:
-        status = str(row.get("trade_status") or "")
-        counts[status] = counts.get(status, 0) + 1
-    return counts
 
 
 def execution_dates(args: argparse.Namespace) -> list[dt.date]:
@@ -204,26 +203,18 @@ def execution_dates(args: argparse.Namespace) -> list[dt.date]:
 def refresh_status_for_execution_dates(args: argparse.Namespace) -> list[dict[str, Any]]:
     if args.skip_status_refresh:
         return []
-    if not DEFAULT_TRADE_LOG_PATH.exists():
-        return []
 
     summaries: list[dict[str, Any]] = []
     for run_date in execution_dates(args):
-        rows = refresh_trade_status_csv(
+        outputs = refresh_trade_status_csvs_for_date(
             run_date=run_date,
             timezone=args.timezone,
-            output_dir=args.status_output_dir,
+            refresh_only_unresolved=True,
             market_lookup_timeout=args.status_market_lookup_timeout,
             market_lookup_retries=args.status_market_lookup_retries,
         )
-        summaries.append(
-            {
-                "date": run_date.isoformat(),
-                "output_path": str(trade_status_path_for_date(run_date, output_dir=args.status_output_dir)),
-                "rows": len(rows),
-                "counts": count_statuses(rows),
-            }
-        )
+        for output in outputs:
+            summaries.append({"date": run_date.isoformat(), **output})
     return summaries
 
 
@@ -248,6 +239,8 @@ def main() -> None:
     else:
         raise ValueError(f"unknown execution window: {args.window}")
 
+    result.metadata["engine"] = args.engine
+    result.metadata["execution_mode"] = engine.config.mode
     status_summaries = refresh_status_for_execution_dates(args)
     if status_summaries:
         result.metadata["trade_status_csvs"] = status_summaries

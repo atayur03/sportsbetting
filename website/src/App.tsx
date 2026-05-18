@@ -8,6 +8,7 @@ import {
   EMPTY_FILTERS,
   filterBets,
   filterOptions,
+  filtersWithDateRange,
   groupClosedBetsBySettlement,
   summarizeBets,
   type StatusBet,
@@ -42,6 +43,13 @@ export function App() {
   }, []);
 
   const options = useMemo(() => filterOptions(bets), [bets]);
+  useEffect(() => {
+    if (!options.minDate || !options.maxDate) {
+      return;
+    }
+    setFilters((currentFilters) => filtersWithDateRange(currentFilters, options));
+  }, [options]);
+
   const filteredBets = useMemo(() => filterBets(bets, filters), [bets, filters]);
   const closedBets = useMemo(
     () => filteredBets.filter((bet) => bet.status === "won" || bet.status === "lost"),

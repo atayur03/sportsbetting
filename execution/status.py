@@ -15,6 +15,9 @@ from execution.schedules.daily import DEFAULT_EXECUTION_TIMEZONE, daily_utc_wind
 DEFAULT_TRADE_LOG_PATH = Path("kalshi/trading/data/real_trade_log.csv")
 DEFAULT_TRADE_STATUS_PATH = Path("execution/data/trade_status.csv")
 DEFAULT_TRADE_STATUS_DIR = Path("execution/data")
+DEFAULT_SIMULATION_DIR = Path("execution/data/simulations")
+DEFAULT_SIMULATED_TRADE_LOG_PATH = DEFAULT_SIMULATION_DIR / "kalshi" / "simulated_trade_log.csv"
+DEFAULT_SIMULATED_TRADE_STATUS_DIR = DEFAULT_SIMULATION_DIR / "kalshi"
 DEFAULT_MARKET_LOOKUP_TIMEOUT = 8
 DEFAULT_MARKET_LOOKUP_RETRIES = 1
 
@@ -323,8 +326,60 @@ def refresh_trade_status_csv(
     return rows
 
 
+def refresh_trade_status_csvs_for_date(
+    *,
+    run_date: dt.date | str,
+    timezone: str = DEFAULT_EXECUTION_TIMEZONE,
+    refresh_only_unresolved: bool = True,
+    market_lookup_timeout: int = DEFAULT_MARKET_LOOKUP_TIMEOUT,
+    market_lookup_retries: int = DEFAULT_MARKET_LOOKUP_RETRIES,
+) -> list[dict[str, Any]]:
+    """Refresh real and simulated date-scoped status CSVs when source logs exist."""
+    outputs: list[dict[str, Any]] = []
+    sources = [
+        {
+            "label": "real",
+            "trade_log_path": DEFAULT_TRADE_LOG_PATH,
+            "output_dir": DEFAULT_TRADE_STATUS_DIR,
+        },
+        {
+            "label": "simulation",
+            "trade_log_path": DEFAULT_SIMULATED_TRADE_LOG_PATH,
+            "output_dir": DEFAULT_SIMULATED_TRADE_STATUS_DIR,
+        },
+    ]
+    for source in sources:
+        trade_log_path = source["trade_log_path"]
+        output_dir = source["output_dir"]
+        if not trade_log_path.exists():
+            continue
+        rows = refresh_trade_status_csv(
+            trade_log_path=trade_log_path,
+            output_dir=output_dir,
+            run_date=run_date,
+            timezone=timezone,
+            refresh_only_unresolved=refresh_only_unresolved,
+            market_lookup_timeout=market_lookup_timeout,
+            market_lookup_retries=market_lookup_retries,
+        )
+        counts: dict[str, int] = {}
+        for row in rows:
+            status = str(row.get("trade_status") or "")
+            counts[status] = counts.get(status, 0) + 1
+        outputs.append(
+            {
+                "source": source["label"],
+                "trade_log_path": str(trade_log_path),
+                "output_path": str(trade_status_path_for_date(run_date, output_dir=output_dir)),
+                "rows": len(rows),
+                "counts": counts,
+            }
+        )
+    return outputs
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Refresh Kalshi trade status CSV.")
+    parser = argparse.ArgumentParser(description="Refresh real and simulated Kalshi trade status CSVs.")
     parser.add_argument("--trade-log-path", type=Path, default=DEFAULT_TRADE_LOG_PATH)
     parser.add_argument("--output-path", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_TRADE_STATUS_DIR)
@@ -347,6 +402,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if (
+        args.date
+        and args.trade_log_path == DEFAULT_TRADE_LOG_PATH
+        and args.output_path is None
+        and args.output_dir == DEFAULT_TRADE_STATUS_DIR
+    ):
+        summaries = refresh_trade_status_csvs_for_date(
+            run_date=args.date,
+            timezone=args.timezone,
+            refresh_only_unresolved=not args.refresh_all,
+            market_lookup_timeout=args.market_lookup_timeout,
+            market_lookup_retries=args.market_lookup_retries,
+        )
+        print({"outputs": summaries})
+        return
+
     rows = refresh_trade_status_csv(
         trade_log_path=args.trade_log_path,
         output_path=args.output_path,

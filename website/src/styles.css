@@ -132,6 +132,7 @@ h2 {
 
 .filters-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -147,6 +148,45 @@ h2 {
 .table-page-buttons button:hover:not(:disabled) {
   border-color: #9ba8ba;
   background: #f7f9fc;
+}
+
+.mode-segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(84px, 1fr));
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 2px;
+}
+
+.mode-segmented-control button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #536071;
+  padding: 5px 10px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.mode-segmented-control button[data-active="true"] {
+  box-shadow: 0 1px 3px rgb(15 23 42 / 14%);
+}
+
+.mode-segmented-control button[data-active="true"][data-mode="real"] {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.mode-segmented-control button[data-active="true"][data-mode="simulated"] {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.mode-segmented-control button[data-active="true"][data-mode="both"] {
+  background: #7c3aed;
+  color: #ffffff;
 }
 
 .filters-content {
@@ -831,11 +871,28 @@ td {
 
 .status-cell,
 .side-cell,
-.result-cell {
+.result-cell,
+.engine-cell,
+.simulation-cell {
   background: #eef2f7;
   color: #536071;
   font-weight: 800;
   text-transform: capitalize;
+}
+
+.engine-cell[data-engine="kalshi"] {
+  background: #24e945;
+  color: #052e16;
+}
+
+.simulation-cell[data-simulated="false"] {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.simulation-cell[data-simulated="true"] {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .status-cell[data-status="won"] {

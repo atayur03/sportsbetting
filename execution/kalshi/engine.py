@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
+
 from kalshi import KalshiTrading
+from kalshi.markets.mlb_markets import get_market_anywhere
+from kalshi.trading.client import append_trade_log, build_order_payload, build_trade_log_row, utc_now_iso
 from strategy import StrategyRun, WagerAction
 
 from execution.spec import ExecutionConfig, ExecutionResult, ExecutionTarget
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_SIMULATED_TRADE_LOG_PATH = (
+    PROJECT_ROOT / "execution" / "data" / "simulations" / "kalshi" / "simulated_trade_log.csv"
+)
 
 
 class KalshiExecutionEngine:
@@ -17,9 +28,11 @@ class KalshiExecutionEngine:
         *,
         trading: KalshiTrading | None = None,
         config: ExecutionConfig | None = None,
+        simulation_trade_log_path: Path = DEFAULT_SIMULATED_TRADE_LOG_PATH,
     ):
         self.trading = trading
         self.config = config or ExecutionConfig()
+        self.simulation_trade_log_path = simulation_trade_log_path
         self.targets_by_line_id = {target.line_id: target for target in targets or []}
 
     def authenticated_trading(self) -> KalshiTrading:
@@ -79,6 +92,34 @@ class KalshiExecutionEngine:
                 response={"dry_run": True},
             )
 
+        if self.config.simulation:
+            try:
+                result = self.simulate_logged_order(action=action, target=target)
+            except Exception as exc:
+                return ExecutionResult(
+                    run_id=run_id,
+                    strategy_name=strategy_name,
+                    recommendation=action.to_dict(),
+                    mode=self.config.mode,
+                    accepted=False,
+                    skipped=False,
+                    reason=f"simulation failed: {exc}",
+                    target=target.to_dict(),
+                )
+
+            return ExecutionResult(
+                run_id=run_id,
+                strategy_name=strategy_name,
+                recommendation=action.to_dict(),
+                mode=self.config.mode,
+                accepted=True,
+                skipped=False,
+                target=target.to_dict(),
+                order=result.get("order"),
+                response=result.get("response"),
+                log_path=result.get("log_path"),
+            )
+
         try:
             result = self.authenticated_trading().place_order(**order_kwargs, dry_run=False)
         except Exception as exc:
@@ -105,6 +146,47 @@ class KalshiExecutionEngine:
             response=result.get("response") or result.get("log_preview"),
             log_path=result.get("log_path"),
         )
+
+    def simulate_logged_order(self, *, action: WagerAction, target: ExecutionTarget) -> dict[str, object]:
+        """Append an assumed-filled order using the real trade-log schema."""
+        order_kwargs = action.to_order_kwargs(ticker=target.venue_ticker)
+        order = build_order_payload(
+            ticker=str(order_kwargs["ticker"]),
+            action=str(order_kwargs["action"]),
+            side=str(order_kwargs["side"]),
+            count=int(order_kwargs["count"]),
+            order_type=str(order_kwargs.get("order_type") or "limit"),
+            yes_price=order_kwargs.get("yes_price"),
+            no_price=order_kwargs.get("no_price"),
+            client_order_id=str(order_kwargs.get("client_order_id") or uuid.uuid4()),
+        )
+        simulated_order_id = f"sim-{uuid.uuid4()}"
+        response = {
+            "simulated": True,
+            "assumed_filled": True,
+            "order": {
+                "order_id": simulated_order_id,
+                "id": simulated_order_id,
+                "status": "filled",
+            },
+        }
+        market, market_source = get_market_anywhere(target.venue_ticker, prefer_historical=False)
+        row = build_trade_log_row(
+            placed_time_utc=utc_now_iso(),
+            market=market,
+            market_source=market_source,
+            order=order,
+            order_response=response,
+            strategy=action.strategy,
+        )
+        append_trade_log(self.simulation_trade_log_path, row)
+        return {
+            "simulated": True,
+            "order": order,
+            "response": response,
+            "log_path": str(self.simulation_trade_log_path),
+            "log_row": row,
+        }
 
     def execute_run(self, run: StrategyRun) -> list[ExecutionResult]:
         """Execute every action in a strategy run and return result rows."""

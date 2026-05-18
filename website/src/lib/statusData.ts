@@ -6,6 +6,7 @@ export type StatusBet = {
   settledAt: string;
   checkedDate: string;
   engine: string;
+  simulated: boolean;
   status: TradeStatus;
   strategy: string;
   sport: string;
@@ -55,6 +56,10 @@ export type StatusFilters = {
   statusExclude: string[];
   sideInclude: string[];
   sideExclude: string[];
+  engineInclude: string[];
+  engineExclude: string[];
+  simulatedInclude: string[];
+  simulatedExclude: string[];
   startDate: string;
   endDate: string;
   query: string;
@@ -69,16 +74,30 @@ export const EMPTY_FILTERS: StatusFilters = {
   statusExclude: [],
   sideInclude: [],
   sideExclude: [],
+  engineInclude: [],
+  engineExclude: [],
+  simulatedInclude: ["real"],
+  simulatedExclude: [],
   startDate: "",
   endDate: "",
   query: "",
 };
+
+export function filtersWithDateRange(filters: StatusFilters, options: FilterOptions): StatusFilters {
+  return {
+    ...filters,
+    startDate: filters.startDate || options.minDate,
+    endDate: filters.endDate || options.maxDate,
+  };
+}
 
 export type FilterOptions = {
   strategies: string[];
   sports: string[];
   statuses: string[];
   sides: string[];
+  engines: string[];
+  simulated: string[];
   minDate: string;
   maxDate: string;
 };
@@ -152,6 +171,21 @@ export function formatStrategy(value: string | null | undefined): string {
     .join(" ");
 }
 
+export function formatEngine(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function simulationLabel(value: boolean): string {
+  return value ? "simulated" : "real";
+}
+
 export function summarizeBets(bets: StatusBet[]): StatusSummary {
   const summary: StatusSummary = {
     total: bets.length,
@@ -186,6 +220,8 @@ export function filterOptions(bets: StatusBet[]): FilterOptions {
     sports: [...new Set([...SUPPORTED_SPORTS, ...bets.map((bet) => bet.sport).filter(Boolean)])].sort(),
     statuses: [...new Set(bets.map((bet) => bet.status).filter(Boolean))].sort(),
     sides: [...new Set(bets.map((bet) => bet.side).filter(Boolean))].sort(),
+    engines: [...new Set(bets.map((bet) => bet.engine).filter(Boolean))].sort(),
+    simulated: ["real", "simulated"],
     minDate: dates[0] || "",
     maxDate: dates[dates.length - 1] || "",
   };
@@ -216,6 +252,12 @@ export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet
     if (!passesSetFilter(bet.side, filters.sideInclude, filters.sideExclude)) {
       return false;
     }
+    if (!passesSetFilter(bet.engine, filters.engineInclude, filters.engineExclude)) {
+      return false;
+    }
+    if (!passesSetFilter(simulationLabel(bet.simulated), filters.simulatedInclude, filters.simulatedExclude)) {
+      return false;
+    }
     if (filters.startDate && bet.gameDate < filters.startDate) {
       return false;
     }
@@ -230,6 +272,9 @@ export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet
         formatStrategy(bet.strategy),
         bet.sport,
         bet.side,
+        bet.engine,
+        formatEngine(bet.engine),
+        simulationLabel(bet.simulated),
         bet.marketTitle,
         bet.marketSubtitle,
         bet.marketResult,

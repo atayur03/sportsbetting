@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { formatDate, formatDateTime, formatStrategy, money, type StatusBet } from "../lib/statusData";
+import {
+  formatDate,
+  formatDateTime,
+  formatEngine,
+  formatStrategy,
+  money,
+  simulationLabel,
+  type StatusBet,
+} from "../lib/statusData";
 
 type StatusTableProps = {
   bets: StatusBet[];
@@ -12,6 +20,8 @@ type SortKey =
   | "gameDate"
   | "status"
   | "strategy"
+  | "engine"
+  | "simulated"
   | "sport"
   | "side"
   | "contracts"
@@ -32,9 +42,11 @@ type Column = {
 const PAGE_SIZES = [10, 25, 50, 100];
 
 const COLUMNS: Column[] = [
+  { key: "simulated", label: "Mode", defaultWidth: 124, render: (bet) => formatEngine(simulationLabel(bet.simulated)) },
   { key: "gameDate", label: "Game date", defaultWidth: 132, render: (bet) => formatDate(bet.gameDate) },
   { key: "status", label: "Status", defaultWidth: 118, render: (bet) => bet.status },
   { key: "strategy", label: "Strategy", defaultWidth: 180, render: (bet) => formatStrategy(bet.strategy) },
+  { key: "engine", label: "Engine", defaultWidth: 112, render: (bet) => formatEngine(bet.engine) },
   { key: "sport", label: "Sport", defaultWidth: 92, render: (bet) => bet.sport },
   { key: "side", label: "Side", defaultWidth: 104, render: (bet) => bet.side },
   { key: "contracts", label: "Contracts", numeric: true, defaultWidth: 112, render: (bet) => bet.contracts },
@@ -266,6 +278,20 @@ export function StatusTable({ bets, totalRows }: StatusTableProps) {
                   if (column.key === "sport") {
                     return (
                       <td className="sport-cell" data-sport={bet.sport.toLowerCase()} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "engine") {
+                    return (
+                      <td className="engine-cell" data-engine={bet.engine.toLowerCase()} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "simulated") {
+                    return (
+                      <td className="simulation-cell" data-simulated={String(bet.simulated)} key={column.key}>
                         {value}
                       </td>
                     );
