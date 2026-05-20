@@ -90,5 +90,25 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(payload).encode("utf-8"))
 
 
+def app(_environ: dict[str, Any], start_response: Any) -> list[bytes]:
+    """WSGI entrypoint for Vercel Python runtimes."""
+    try:
+        payload = load_status_payload()
+        status = "200 OK"
+        body = json.dumps(payload).encode("utf-8")
+    except Exception as exc:
+        status = "502 Bad Gateway"
+        body = json.dumps({"error": str(exc)}).encode("utf-8")
+
+    start_response(
+        status,
+        [
+            ("Content-Type", "application/json"),
+            ("Cache-Control", "no-store"),
+        ],
+    )
+    return [body]
+
+
 if __name__ == "__main__":
     print(json.dumps(load_status_payload()))

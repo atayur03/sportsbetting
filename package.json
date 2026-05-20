@@ -1,0 +1,8 @@
+{
+  "name": "sports-root",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "cd website && npm install && npm run build"
+  }
+}
