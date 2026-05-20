@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from strategy.interface import Strategy
-from strategy.spec import MarketLine, Side, StrategyRun, WagerAction
+from strategy.core.spec import MarketLine, Side, StrategyRun, WagerAction
 
 
 def inverted_side(side: Side) -> Side:

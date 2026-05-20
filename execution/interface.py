@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from execution.spec import ExecutionResult, ExecutionTarget
+from execution.core.spec import ExecutionResult, ExecutionTarget
 from strategy import MarketLine, StrategyRun
 
 

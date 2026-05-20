@@ -35,13 +35,13 @@ The script:
 Raw summary JSON files:
 
 ```text
-scrapers/espn/data/raw/espn/mlb/summary/{season}/{game_id}.json.gz
+scrapers/helpers/espn/data/raw/espn/mlb/summary/{season}/{game_id}.json.gz
 ```
 
 Game index:
 
 ```text
-scrapers/espn/data/raw/espn/mlb/game_index.csv
+scrapers/helpers/espn/data/raw/espn/mlb/game_index.csv
 ```
 
 Index columns:
@@ -72,49 +72,49 @@ summary_path
 Discover games for a date range and write only the index:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507 --discover-only
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507 --discover-only
 ```
 
 Download summaries for a date range:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507
 ```
 
 Download summaries with modest parallelism:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507 --workers 4
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-date 20260501 --end-date 20260507 --workers 4
 ```
 
 Download the last five seasons, based on the current year:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --last-seasons 5
+python scrapers/helpers/espn/fetch_mlb_summaries.py --last-seasons 5
 ```
 
 Download explicit seasons:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026
 ```
 
 By default, existing summary JSON files are not refetched. To refresh them:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026 --refresh
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026 --refresh
 ```
 
 Use a small `--sleep` delay to be polite to ESPN:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026 --sleep 0.5
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-season 2022 --end-season 2026 --sleep 0.5
 ```
 
 Use retries and a longer timeout for larger backfills:
 
 ```bash
-python scrapers/espn/fetch_mlb_summaries.py --start-date 20220407 --end-date 20260516 --workers 4 --timeout 90 --retries 5
+python scrapers/helpers/espn/fetch_mlb_summaries.py --start-date 20220407 --end-date 20260516 --workers 4 --timeout 90 --retries 5
 ```
 
 ## Notes

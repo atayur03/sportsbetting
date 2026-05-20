@@ -3,13 +3,33 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime as dt
 from pathlib import Path
 from typing import Any
 
-from kalshi import KalshiMarkets
+from kalshi.markets.mlb_markets import get_market_anywhere
+from aws.helpers.project_files import destination as project_file_destination
+from aws.helpers.project_files import exists as project_file_exists
+from aws.helpers.project_files import read_csv_rows, read_csv_rows_if_exists, write_csv_rows
+from aws.helpers.project_files import require_s3_for_managed_paths
 from execution.schedules.daily import DEFAULT_EXECUTION_TIMEZONE, daily_utc_window, parse_run_date
+
+
+class KalshiMarkets:
+    def get_market_anywhere(
+        self,
+        ticker: str,
+        *,
+        prefer_historical: bool = True,
+        timeout: int = 30,
+        retries: int = 3,
+    ) -> tuple[dict[str, Any], str]:
+        return get_market_anywhere(
+            ticker,
+            prefer_historical=prefer_historical,
+            timeout=timeout,
+            retries=retries,
+        )
 
 
 DEFAULT_TRADE_LOG_PATH = Path("kalshi/trading/data/real_trade_log.csv")
@@ -73,17 +93,11 @@ def utc_now_iso() -> str:
 
 
 def read_trade_log(path: Path) -> list[dict[str, str]]:
-    if not path.exists():
-        raise FileNotFoundError(f"Trade log not found: {path}")
-    with path.open(newline="", encoding="utf-8") as file:
-        return list(csv.DictReader(file))
+    return read_csv_rows(path)
 
 
 def read_trade_status_csv(path: Path) -> list[dict[str, str]]:
-    if not path.exists():
-        return []
-    with path.open(newline="", encoding="utf-8") as file:
-        return list(csv.DictReader(file))
+    return read_csv_rows_if_exists(path)
 
 
 def trade_status_path_for_date(
@@ -287,11 +301,7 @@ def build_trade_status_rows(
 
 
 def write_trade_status_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=TRADE_STATUS_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_csv_rows(path, rows, TRADE_STATUS_COLUMNS)
 
 
 def refresh_trade_status_csv(
@@ -351,7 +361,7 @@ def refresh_trade_status_csvs_for_date(
     for source in sources:
         trade_log_path = source["trade_log_path"]
         output_dir = source["output_dir"]
-        if not trade_log_path.exists():
+        if not project_file_exists(trade_log_path):
             continue
         rows = refresh_trade_status_csv(
             trade_log_path=trade_log_path,
@@ -369,8 +379,8 @@ def refresh_trade_status_csvs_for_date(
         outputs.append(
             {
                 "source": source["label"],
-                "trade_log_path": str(trade_log_path),
-                "output_path": str(trade_status_path_for_date(run_date, output_dir=output_dir)),
+                "trade_log_path": project_file_destination(trade_log_path),
+                "output_path": project_file_destination(trade_status_path_for_date(run_date, output_dir=output_dir)),
                 "rows": len(rows),
                 "counts": counts,
             }
@@ -402,6 +412,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.date and args.trade_log_path == DEFAULT_TRADE_LOG_PATH and args.output_path is None:
+        require_s3_for_managed_paths(
+            [
+                DEFAULT_TRADE_LOG_PATH,
+                DEFAULT_SIMULATED_TRADE_LOG_PATH,
+                trade_status_path_for_date(args.date, output_dir=DEFAULT_TRADE_STATUS_DIR),
+                trade_status_path_for_date(args.date, output_dir=DEFAULT_SIMULATED_TRADE_STATUS_DIR),
+            ]
+        )
     if (
         args.date
         and args.trade_log_path == DEFAULT_TRADE_LOG_PATH

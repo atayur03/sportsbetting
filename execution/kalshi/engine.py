@@ -10,7 +10,7 @@ from kalshi.markets.mlb_markets import get_market_anywhere
 from kalshi.trading.client import append_trade_log, build_order_payload, build_trade_log_row, utc_now_iso
 from strategy import StrategyRun, WagerAction
 
-from execution.spec import ExecutionConfig, ExecutionResult, ExecutionTarget
+from execution.core.spec import ExecutionConfig, ExecutionResult, ExecutionTarget
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -179,12 +179,12 @@ class KalshiExecutionEngine:
             order_response=response,
             strategy=action.strategy,
         )
-        append_trade_log(self.simulation_trade_log_path, row)
+        log_destination = append_trade_log(self.simulation_trade_log_path, row)
         return {
             "simulated": True,
             "order": order,
             "response": response,
-            "log_path": str(self.simulation_trade_log_path),
+            "log_path": log_destination,
             "log_row": row,
         }
 

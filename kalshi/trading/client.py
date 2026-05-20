@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import csv
 import datetime
 import json
 import os
@@ -35,6 +34,7 @@ from kalshi.markets.mlb_markets import (  # noqa: E402
     get_market_anywhere,
     market_summary_row,
 )
+from aws.helpers.project_files import append_csv_row, write_csv_rows  # noqa: E402
 
 
 DEFAULT_BASE_URL = "https://external-api.kalshi.com/trade-api/v2"
@@ -400,8 +400,8 @@ class KalshiTradingClient:
             order_response=response,
             strategy=strategy,
         )
-        append_trade_log(log_path, log_row)
-        return {"dry_run": False, "order": order, "response": response, "log_path": str(log_path)}
+        log_destination = append_trade_log(log_path, log_row)
+        return {"dry_run": False, "order": order, "response": response, "log_path": log_destination}
 
 
 def build_order_payload(
@@ -484,11 +484,7 @@ def normalize_fill(fill: dict[str, Any], *, source: str) -> dict[str, Any]:
 
 
 def write_fills_csv(path: Path, fills: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=FILL_COLUMNS)
-        writer.writeheader()
-        writer.writerows(fills)
+    write_csv_rows(path, fills, FILL_COLUMNS)
 
 
 def utc_now_iso() -> str:
@@ -563,14 +559,8 @@ def build_trade_log_row(
     return {column: row.get(column) for column in TRADE_LOG_COLUMNS}
 
 
-def append_trade_log(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = path.exists()
-    with path.open("a", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=TRADE_LOG_COLUMNS)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
+def append_trade_log(path: Path, row: dict[str, Any]) -> str:
+    return append_csv_row(path, row, TRADE_LOG_COLUMNS)
 
 
 def print_json(payload: dict[str, Any]) -> None:

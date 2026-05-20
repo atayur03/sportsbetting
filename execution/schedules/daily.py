@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from execution.interface import MarketLineProvider, VenueExecutionEngine
-from execution.spec import ExecutionResult
+from execution.core.spec import ExecutionResult
 from strategy import SportsLeague, Strategy, normalize_supported_sports_leagues
 
 

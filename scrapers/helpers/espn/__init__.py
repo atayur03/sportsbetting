@@ -1,0 +1,2 @@
+"""Internal ESPN scraper implementation."""
+

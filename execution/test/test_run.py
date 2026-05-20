@@ -1,4 +1,4 @@
-from execution.run import normalize_strategy_name
+from execution.cli.run import normalize_strategy_name
 
 
 def test_normalize_strategy_name_leaves_explicit_choice_unchanged_without_flag():

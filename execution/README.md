@@ -119,9 +119,9 @@ date-range run from `run_date` through `run_date + 7 days`.
 CLI:
 
 ```bash
-python -m execution.run daily --engine kalshi --strategy underdog --date 2026-05-17
-python -m execution.run weekly --engine kalshi --strategy underdog --date 2026-05-17
-python -m execution.run date-range --engine kalshi --strategy underdog --start-date 2026-05-17 --end-date 2026-05-24
+python -m execution.cli.run daily --engine kalshi --strategy underdog --date 2026-05-17
+python -m execution.cli.run weekly --engine kalshi --strategy underdog --date 2026-05-17
+python -m execution.cli.run date-range --engine kalshi --strategy underdog --start-date 2026-05-17 --end-date 2026-05-24
 ```
 
 Available strategies:
@@ -137,8 +137,8 @@ strategy's required market type when you choose an `inverted_*` strategy.
 You can also use `--inverted` as a toggle:
 
 ```bash
-python -m execution.run daily --engine kalshi --strategy underdog --inverted --date 2026-05-17
-python -m execution.run daily --engine kalshi --strategy inverted_underdog --inverted --date 2026-05-17
+python -m execution.cli.run daily --engine kalshi --strategy underdog --inverted --date 2026-05-17
+python -m execution.cli.run daily --engine kalshi --strategy inverted_underdog --inverted --date 2026-05-17
 ```
 
 The first command runs `inverted_underdog`. The second toggles back to
@@ -147,10 +147,10 @@ The first command runs `inverted_underdog`. The second toggles back to
 All CLI modes dry-run by default. Add `--live` only when you want real orders:
 
 ```bash
-python -m execution.run daily --engine kalshi --strategy underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
-python -m execution.run daily --engine kalshi --strategy game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
-python -m execution.run daily --engine kalshi --strategy inverted_underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
-python -m execution.run daily --engine kalshi --strategy inverted_game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.cli.run daily --engine kalshi --strategy underdog --date 2026-05-19 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.cli.run daily --engine kalshi --strategy game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.cli.run daily --engine kalshi --strategy inverted_underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
+python -m execution.cli.run daily --engine kalshi --strategy inverted_game_total_under --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --live
 ```
 
 Simulation uses the selected engine's market mapping but does not place real
@@ -158,14 +158,14 @@ orders. Simulated orders are assumed filled, use UUID-backed simulated order
 IDs, and write the same columns as the real trade log:
 
 ```bash
-python -m execution.run daily --engine kalshi --strategy underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --simulate
+python -m execution.cli.run daily --engine kalshi --strategy underdog --date 2026-05-17 --stake-cents 100 --max-order-stake-cents 100 --simulate
 ```
 
 Daily execution refreshes the date-scoped trade status CSV after the run. Use
 `--skip-status-refresh` if you only want discovery/order execution:
 
 ```bash
-python -m execution.run daily --engine kalshi --strategy underdog --date 2026-05-17 --skip-status-refresh
+python -m execution.cli.run daily --engine kalshi --strategy underdog --date 2026-05-17 --skip-status-refresh
 ```
 
 For live trading, set both:
@@ -175,29 +175,38 @@ For live trading, set both:
 
 Trade status dashboard:
 
-Real trades are appended to `kalshi/trading/data/real_trade_log.csv`. Status
-dashboards are written by game date:
+Real trades are appended to S3 at:
 
 ```text
-execution/data/trade_status_YYYY-MM-DD.csv
+private/kalshi/trading/real_trade_log.csv
 ```
 
-Simulated trades are appended to:
+The old local path, `kalshi/trading/data/real_trade_log.csv`, is now only a
+logical path used to choose the S3 key. If a local file already exists and the
+S3 object does not, the first write seeds S3 from that local file.
+
+Status dashboards are written by game date to S3:
 
 ```text
-execution/data/simulations/kalshi/simulated_trade_log.csv
+private/execution/status/trade_status_YYYY-MM-DD.csv
 ```
 
-Simulated status dashboards are written by game date:
+Simulated trades are appended to S3 at:
 
 ```text
-execution/data/simulations/kalshi/trade_status_YYYY-MM-DD.csv
+private/execution/simulations/kalshi/simulated_trade_log.csv
+```
+
+Simulated status dashboards are written by game date to S3:
+
+```text
+private/execution/simulations/kalshi/trade_status_YYYY-MM-DD.csv
 ```
 
 To update one date manually, run:
 
 ```bash
-python -m execution.status --date 2026-05-17
+python -m execution.cli.status --date 2026-05-17
 ```
 
 That reads the trade log, filters to games on that local date, checks only
@@ -205,17 +214,21 @@ unresolved rows by default, and writes both real and simulated outputs when the
 source logs exist:
 
 ```text
-execution/data/trade_status_2026-05-17.csv
-execution/data/simulations/kalshi/trade_status_2026-05-17.csv
+private/execution/status/trade_status_2026-05-17.csv
+private/execution/simulations/kalshi/trade_status_2026-05-17.csv
 ```
 
 Useful status commands:
 
 ```bash
-python -m execution.status --date 2026-05-17
-python -m execution.status --date 2026-05-17 --refresh-all
-python -m execution.status --date 2026-05-17 --market-lookup-timeout 15 --market-lookup-retries 2
+python -m execution.cli.status --date 2026-05-17
+python -m execution.cli.status --date 2026-05-17 --refresh-all
+python -m execution.cli.status --date 2026-05-17 --market-lookup-timeout 15 --market-lookup-retries 2
 ```
 
-The status CSVs and real trade log are ignored by git because they can contain
-real trade/account metadata.
+The S3 cache and any legacy local status CSVs/trade logs are ignored by git
+because they can contain real trade/account metadata.
+
+AWS Lambda equivalents live under `aws/lambdas/` and are deployed by
+`LambdaSportsBettingStack`. Use those for scheduled or manual cloud updates
+instead of running local status/export commands once the stack is deployed.

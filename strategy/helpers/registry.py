@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from strategy.interface import Strategy
-from strategy.spec import SportsLeague
+from strategy.core.spec import SportsLeague
 
 
 def normalize_supported_sports_leagues(strategy: Strategy) -> set[SportsLeague]:

@@ -10,8 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 from kalshi.markets.mlb_markets import (
     SUMMARY_COLUMNS,
     get_historical_market,
@@ -75,6 +73,8 @@ class KalshiMarkets:
         Shape: dataframe with one row per market ticker and columns from
         `KalshiMarkets.summary_columns`.
         """
+        import pandas as pd  # noqa: F401
+
         return markets_to_dataframe(self.list_active_mlb_markets(**kwargs))
 
     def get_market(self, ticker: str, *, timeout: int = 30, retries: int = 3) -> dict[str, Any]:
@@ -133,6 +133,8 @@ class KalshiMarkets:
 
     def market_resolution_dataframe(self, market: dict[str, Any]) -> pd.DataFrame:
         """Return one-row dataframe of settlement/resolution fields."""
+        import pandas as pd  # noqa: F401
+
         return market_resolution_dataframe(market)
 
     def write_markets_json(self, path: Path, markets: Any) -> None:

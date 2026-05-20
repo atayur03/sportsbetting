@@ -2,10 +2,13 @@
 __pycache__/
 node_modules/
 dist/
+cdk.out/
 *.py[cod]
 .ipynb_checkpoints/
 .DS_Store
 *.log
+*.pkg
+.s3_cache/
 .env
 .env.*
 !.env.example
@@ -20,3 +23,7 @@ execution/data/simulations/**/*.csv
 website/public/data/*.json
 scrapers/espn/data/raw/espn/mlb/summary/**/*.json
 scrapers/espn/data/raw/espn/mlb/summary/**/*.json.gz
+scrapers/helpers/espn/data/raw/espn/mlb/summary/**/*.json
+scrapers/helpers/espn/data/raw/espn/mlb/summary/**/*.json.gz
+.vercel
+.env*.local

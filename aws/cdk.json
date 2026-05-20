@@ -1,0 +1,11 @@
+{
+  "app": "node --loader ts-node/esm bin/app.ts",
+  "context": {
+    "projectName": "sportsbetting",
+    "allowedOrigins": [
+      "http://localhost:5173",
+      "https://*.vercel.app",
+      "https://sportsbetting.ashwintayur.com"
+    ]
+  }
+}

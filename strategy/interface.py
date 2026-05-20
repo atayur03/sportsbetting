@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from strategy.spec import MarketLine, SportsLeague, StrategyRun
+from strategy.core.spec import MarketLine, SportsLeague, StrategyRun
 
 
 class Strategy(Protocol):

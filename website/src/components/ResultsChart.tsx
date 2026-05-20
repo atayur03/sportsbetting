@@ -7,7 +7,6 @@ import {
   XAxis,
   YAxis,
   type TickItem,
-  type TooltipProps,
 } from "recharts";
 import { useMemo, useState } from "react";
 
@@ -33,10 +32,22 @@ type ChartDatum = {
 };
 
 type AxisTickProps = {
-  x?: number;
-  y?: number;
+  x?: number | string;
+  y?: number | string;
   payload?: TickItem;
   maxTimestamp: number;
+};
+
+type TooltipEntry = {
+  color?: string;
+  dataKey?: string | number;
+  value?: number;
+  payload: ChartDatum;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  payload?: TooltipEntry[];
 };
 
 function timestampForRow(row: ChartRow): number {
@@ -106,18 +117,25 @@ function formatLegendValue(value: string): string {
   return value === "total" ? "Total" : formatStrategy(value);
 }
 
+function numericCoordinate(value: number | string | undefined): number {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function TimeAxisTick({ x = 0, y = 0, payload, maxTimestamp }: AxisTickProps) {
+  const tickX = numericCoordinate(x);
+  const tickY = numericCoordinate(y);
   const value = Number(payload?.value);
   const isRightEdge = value === maxTimestamp;
 
   return (
-    <text className="chart-axis-tick" x={x + (isRightEdge ? 24 : 4)} y={y + 16} textAnchor={isRightEdge ? "end" : "start"}>
+    <text className="chart-axis-tick" x={tickX + (isRightEdge ? 24 : 4)} y={tickY + 16} textAnchor={isRightEdge ? "end" : "start"}>
       {formatAxisTimestamp(value)}
     </text>
   );
 }
 
-function ChartTooltip({ active, payload }: TooltipProps<number, string>) {
+function ChartTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload?.length) {
     return null;
   }

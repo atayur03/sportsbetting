@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from kalshi import KalshiConfig
+from aws.helpers.project_files import require_s3_for_managed_paths
 from execution import (
     DEFAULT_SIMULATED_TRADE_LOG_PATH,
     DailyExecutionRunner,
@@ -19,9 +20,15 @@ from execution import (
     KalshiMarketLineProvider,
     WeeklyExecutionRunner,
 )
+from execution.cli.status import (
+    DEFAULT_SIMULATED_TRADE_STATUS_DIR,
+    DEFAULT_TRADE_LOG_PATH,
+    DEFAULT_TRADE_STATUS_DIR,
+    refresh_trade_status_csvs_for_date,
+    trade_status_path_for_date,
+)
 from execution.schedules.daily import parse_run_date
 from execution.schedules.date_range import iter_dates
-from execution.status import refresh_trade_status_csvs_for_date
 from strategy import InvertedStrategy
 from strategy.mlb import GameTotalUnderStrategy, UnderdogStrategy
 
@@ -218,8 +225,27 @@ def refresh_status_for_execution_dates(args: argparse.Namespace) -> list[dict[st
     return summaries
 
 
+def preflight_managed_storage(args: argparse.Namespace) -> None:
+    if not (args.live or args.simulate or not args.skip_status_refresh):
+        return
+
+    paths: list[Path] = []
+    if args.live:
+        paths.append(DEFAULT_TRADE_LOG_PATH)
+    if args.simulate:
+        paths.append(DEFAULT_SIMULATED_TRADE_LOG_PATH)
+    if not args.skip_status_refresh:
+        for run_date in execution_dates(args):
+            paths.append(trade_status_path_for_date(run_date, output_dir=DEFAULT_TRADE_STATUS_DIR))
+            paths.append(trade_status_path_for_date(run_date, output_dir=DEFAULT_SIMULATED_TRADE_STATUS_DIR))
+
+    require_s3_for_managed_paths(paths)
+
+
 def main() -> None:
     args = parse_args()
+    load_env_file()
+    preflight_managed_storage(args)
     strategy, market_types, provider, engine = build_execution_objects(args)
 
     if args.window == "daily":

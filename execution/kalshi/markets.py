@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from kalshi import KalshiMarkets
-from execution.spec import ExecutionTarget
+from execution.core.spec import ExecutionTarget
 from strategy import MarketLine, SportsLeague
 
 

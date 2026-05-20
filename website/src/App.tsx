@@ -16,31 +16,45 @@ import {
   type StatusPayload,
 } from "./lib/statusData";
 
-const DATA_URL = "/data/trade-status.json";
+const DATA_URL = "/api/status";
 type LoadState = "loading" | "ready" | "missing";
 
 export function App() {
   const [bets, setBets] = useState<StatusBet[]>([]);
   const [generatedAt, setGeneratedAt] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [loadError, setLoadError] = useState("");
   const [filters, setFilters] = useState<StatusFiltersState>(EMPTY_FILTERS);
 
   useEffect(() => {
     fetch(DATA_URL, { cache: "no-store" })
       .then((response) => {
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            "Status API returned HTML instead of JSON. Run with `npx vercel dev` from the repo root, or deploy Vercel from the repo root so `/api/status` is served.",
+          );
+        }
         if (!response.ok) {
-          throw new Error(`Missing ${DATA_URL}`);
+          return response
+            .json()
+            .catch(() => ({}))
+            .then((payload) => {
+              throw new Error(String(payload.error || `Unable to load ${DATA_URL}`));
+            });
         }
         return response.json() as Promise<StatusPayload>;
       })
       .then((payload) => {
         setBets(Array.isArray(payload.bets) ? payload.bets : []);
         setGeneratedAt(payload.generatedAt || "");
+        setLoadError("");
         setLoadState("ready");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         setBets([]);
         setGeneratedAt("");
+        setLoadError(error instanceof Error ? error.message : "Unable to load status data");
         setLoadState("missing");
       });
   }, []);
@@ -64,6 +78,13 @@ export function App() {
   return (
     <main className="dashboard-shell">
       <header className="dashboard-header">
+        {loadState !== "ready" ? (
+          <span className="data-state" data-state={loadState}>
+            {loadState === "loading"
+              ? "Loading status data..."
+              : loadError || "Unable to load status data"}
+          </span>
+        ) : null}
       </header>
 
       <SummaryStats summary={summary} />

@@ -12,7 +12,6 @@ from typing import Any, Iterable
 from urllib.parse import quote
 
 import requests
-import pandas as pd
 
 
 API_BASE = "https://external-api.kalshi.com/trade-api/v2"
@@ -248,10 +247,14 @@ def market_resolution_row(market: dict[str, Any]) -> dict[str, Any]:
 
 
 def markets_to_dataframe(markets: Iterable[dict[str, Any]]):
+    import pandas as pd
+
     return pd.DataFrame(market_summary_rows(markets))
 
 
 def market_resolution_dataframe(market: dict[str, Any]):
+    import pandas as pd
+
     return pd.DataFrame([market_resolution_row(market)])
 
 

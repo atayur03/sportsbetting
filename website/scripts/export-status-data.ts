@@ -3,9 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../..");
+const repoRoot = path.resolve(__dirname, "../../..");
 const statusDir = path.join(repoRoot, "execution/data");
 const simulationStatusRoot = path.join(statusDir, "simulations");
+const s3CacheStatusDir = path.join(repoRoot, ".s3_cache/private/execution/status");
+const s3CacheSimulationStatusRoot = path.join(repoRoot, ".s3_cache/private/execution/simulations");
 const outputPath = path.join(repoRoot, "website/public/data/trade-status.json");
 
 const SAFE_FIELDS = [
@@ -145,12 +147,21 @@ function sanitizedBet(row: CsvRow, index: number, simulated: boolean): Sanitized
 }
 
 async function main(): Promise<void> {
-  const realFiles = await readStatusFiles(statusDir, false);
-  const simulationFiles = await readStatusFiles(simulationStatusRoot, true);
-  const files = [
-    ...realFiles.filter(({ filePath }) => !filePath.includes(`${path.sep}simulations${path.sep}`)),
-    ...simulationFiles,
-  ].sort((a, b) => a.filePath.localeCompare(b.filePath));
+  const realFiles = [
+    ...(await readStatusFiles(statusDir, false)).filter(
+      ({ filePath }) => !filePath.includes(`${path.sep}simulations${path.sep}`),
+    ),
+    ...(await readStatusFiles(s3CacheStatusDir, false)),
+  ];
+  const simulationFiles = [
+    ...(await readStatusFiles(simulationStatusRoot, true)),
+    ...(await readStatusFiles(s3CacheSimulationStatusRoot, true)),
+  ];
+  const filesByDateAndMode = new Map<string, { filePath: string; simulated: boolean }>();
+  for (const file of [...realFiles, ...simulationFiles]) {
+    filesByDateAndMode.set(`${file.simulated}:${path.basename(file.filePath)}`, file);
+  }
+  const files = [...filesByDateAndMode.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
 
   const bets: SanitizedBet[] = [];
   for (const file of files) {

@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
         "--data-dir",
         type=Path,
         default=DEFAULT_DATA_DIR,
-        help="Root data directory. Defaults to scrapers/espn/data.",
+        help="Root data directory. Defaults to scrapers/helpers/espn/data.",
     )
     parser.add_argument(
         "--index-path",
