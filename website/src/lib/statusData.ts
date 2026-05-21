@@ -49,6 +49,7 @@ export type ChartRow = {
   settledAt: string;
   total: number;
   strategies: Record<string, number>;
+  activeStrategies: string[];
 };
 
 export type StatusFilters = {
@@ -355,6 +356,7 @@ export function groupClosedBetsBySettlement(closedBets: StatusBet[]): ChartRow[]
         settledAt: bet.settledAt,
         total: cumulativeTotal,
         strategies: { ...cumulativeByStrategy },
+        activeStrategies: [strategy],
       };
     });
 }

@@ -28,7 +28,8 @@ type ChartDatum = {
   label: string;
   settledAt: string;
   total: number;
-  [strategy: string]: number | string;
+  activeStrategies: Set<string>;
+  [strategy: string]: number | string | Set<string> | null;
 };
 
 type AxisTickProps = {
@@ -41,7 +42,7 @@ type AxisTickProps = {
 type TooltipEntry = {
   color?: string;
   dataKey?: string | number;
-  value?: number;
+  value?: number | null;
   payload: ChartDatum;
 };
 
@@ -98,19 +99,38 @@ function chartData(rows: ChartRow[], strategies: string[], bucketMs: number): Ch
   for (const row of rows) {
     const rawTimestamp = timestampForRow(row);
     const timestamp = bucketTimestamp(rawTimestamp, bucketMs);
-    const datum: ChartDatum = {
+    const datum = dataByBucket.get(timestamp) || {
       timestamp,
       label: formatTimestamp(timestamp) || formatDate(row.date),
       settledAt: row.settledAt,
       total: row.total,
+      activeStrategies: new Set<string>(),
     };
-    for (const strategy of strategies) {
-      datum[strategy] = row.strategies[strategy] || 0;
+    datum.settledAt = row.settledAt;
+    datum.total = row.total;
+    for (const strategy of row.activeStrategies || []) {
+      datum.activeStrategies.add(strategy);
     }
     dataByBucket.set(timestamp, datum);
   }
 
-  return [...dataByBucket.values()].sort((a, b) => a.timestamp - b.timestamp);
+  const data = [...dataByBucket.values()].sort((a, b) => a.timestamp - b.timestamp);
+  for (const datum of data) {
+    for (const strategy of strategies) {
+      datum[strategy] = datum.activeStrategies.has(strategy) ? rowsForBucket(rows, datum.timestamp, bucketMs, strategy) : null;
+    }
+  }
+  return data;
+}
+
+function rowsForBucket(rows: ChartRow[], timestamp: number, bucketMs: number, strategy: string): number {
+  let value = 0;
+  for (const row of rows) {
+    if (bucketTimestamp(timestampForRow(row), bucketMs) === timestamp && row.activeStrategies.includes(strategy)) {
+      value = row.strategies[strategy] || 0;
+    }
+  }
+  return value;
 }
 
 function formatLegendValue(value: string): string {
@@ -145,7 +165,7 @@ function ChartTooltip({ active, payload }: ChartTooltipProps) {
     <div className="chart-tooltip">
       <div className="chart-tooltip-title">{datum.label}</div>
       {payload.map((entry) => (
-        <div className="chart-tooltip-row" key={entry.dataKey}>
+        entry.value == null ? null : <div className="chart-tooltip-row" key={entry.dataKey}>
           <span>
             <i style={{ background: entry.color }} /> {formatLegendValue(String(entry.dataKey))}
           </span>
@@ -251,6 +271,7 @@ export function ResultsChart({ rows }: ResultsChartProps) {
                 dot={{ r: 2 }}
                 activeDot={{ r: 4 }}
                 key={strategy}
+                connectNulls
               />
             ))}
           </LineChart>
