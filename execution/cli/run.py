@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from kalshi import KalshiConfig
 from aws.helpers.project_files import require_s3_for_managed_paths
 from execution import (
     DEFAULT_SIMULATED_TRADE_LOG_PATH,
@@ -176,6 +175,8 @@ def parse_args() -> argparse.Namespace:
 def build_execution_objects(args: argparse.Namespace):
     load_env_file()
     if args.live:
+        from kalshi import KalshiConfig
+
         KalshiConfig.from_env()
 
     strategy_name = normalize_strategy_name(args.strategy, inverted=args.inverted)

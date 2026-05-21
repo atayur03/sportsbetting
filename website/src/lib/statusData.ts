@@ -1,4 +1,4 @@
-export type TradeStatus = "open" | "won" | "lost" | "unknown" | string;
+export type TradeStatus = "pending_order" | "partial_order" | "open" | "won" | "lost" | "canceled" | "unknown" | string;
 
 export type StatusBet = {
   id: string;
@@ -8,6 +8,10 @@ export type StatusBet = {
   engine: string;
   simulated: boolean;
   status: TradeStatus;
+  orderLifecycleStatus: string;
+  fillStatus: string;
+  positionStatus: string;
+  marketSettlementStatus: string;
   strategy: string;
   sport: string;
   side: string;
@@ -182,6 +186,38 @@ export function formatEngine(value: string | null | undefined): string {
     .join(" ");
 }
 
+export function formatStatus(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const explicitLabels: Record<string, string> = {
+    pending_order: "Pending Order",
+    partial_order: "Partial Order",
+    open: "Open",
+    won: "Won",
+    lost: "Lost",
+    canceled: "Canceled",
+    rejected: "Rejected",
+    unknown: "Unknown",
+    resting: "Resting",
+    filled: "Filled",
+    partially_filled: "Partially Filled",
+    unfilled: "Unfilled",
+    partial: "Partial",
+    none: "None",
+    settled: "Settled",
+    unresolved: "Unresolved",
+  };
+  if (explicitLabels[value]) {
+    return explicitLabels[value];
+  }
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function simulationLabel(value: boolean): string {
   return value ? "simulated" : "real";
 }
@@ -268,6 +304,13 @@ export function filterBets(bets: StatusBet[], filters: StatusFilters): StatusBet
       const text = [
         bet.gameDate,
         bet.status,
+        formatStatus(bet.status),
+        bet.orderLifecycleStatus,
+        formatStatus(bet.orderLifecycleStatus),
+        bet.fillStatus,
+        formatStatus(bet.fillStatus),
+        bet.positionStatus,
+        formatStatus(bet.positionStatus),
         bet.strategy,
         formatStrategy(bet.strategy),
         bet.sport,

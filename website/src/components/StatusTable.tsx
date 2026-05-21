@@ -4,6 +4,7 @@ import {
   formatDate,
   formatDateTime,
   formatEngine,
+  formatStatus,
   formatStrategy,
   money,
   simulationLabel,
@@ -20,6 +21,9 @@ type SortDirection = "asc" | "desc";
 type SortKey =
   | "gameDate"
   | "status"
+  | "orderLifecycleStatus"
+  | "fillStatus"
+  | "positionStatus"
   | "strategy"
   | "engine"
   | "simulated"
@@ -45,7 +49,10 @@ const PAGE_SIZES = [10, 25, 50, 100];
 const COLUMNS: Column[] = [
   { key: "simulated", label: "Mode", defaultWidth: 124, render: (bet) => formatEngine(simulationLabel(bet.simulated)) },
   { key: "gameDate", label: "Game date", defaultWidth: 132, render: (bet) => formatDate(bet.gameDate) },
-  { key: "status", label: "Status", defaultWidth: 118, render: (bet) => bet.status },
+  { key: "status", label: "Status", defaultWidth: 142, render: (bet) => formatStatus(bet.status) },
+  { key: "orderLifecycleStatus", label: "Order", defaultWidth: 142, render: (bet) => formatStatus(bet.orderLifecycleStatus) },
+  { key: "fillStatus", label: "Fill", defaultWidth: 118, render: (bet) => formatStatus(bet.fillStatus) },
+  { key: "positionStatus", label: "Position", defaultWidth: 126, render: (bet) => formatStatus(bet.positionStatus) },
   { key: "strategy", label: "Strategy", defaultWidth: 180, render: (bet) => formatStrategy(bet.strategy) },
   { key: "engine", label: "Engine", defaultWidth: 112, render: (bet) => formatEngine(bet.engine) },
   { key: "sport", label: "Sport", defaultWidth: 92, render: (bet) => bet.sport },
@@ -64,7 +71,9 @@ const COLUMNS: Column[] = [
   { key: "marketResult", label: "Result", defaultWidth: 132, render: (bet) => bet.marketResult },
 ];
 
-const DEFAULT_VISIBLE_COLUMNS = COLUMNS.map((column) => column.key).filter((key) => key !== "simulated");
+const DEFAULT_VISIBLE_COLUMNS = COLUMNS.map((column) => column.key).filter(
+  (key) => key !== "simulated" && key !== "orderLifecycleStatus" && key !== "positionStatus",
+);
 
 function sortValue(bet: StatusBet, key: SortKey): string | number {
   const value = bet[key];
@@ -261,6 +270,27 @@ export function StatusTable({ bets, totalRows, generatedAt }: StatusTableProps) 
                       </td>
                     );
                   }
+                  if (column.key === "orderLifecycleStatus") {
+                    return (
+                      <td className="status-cell" data-status={bet.orderLifecycleStatus} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "fillStatus") {
+                    return (
+                      <td className="status-cell" data-status={bet.fillStatus} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
+                  if (column.key === "positionStatus") {
+                    return (
+                      <td className="status-cell" data-status={bet.positionStatus} key={column.key}>
+                        {value}
+                      </td>
+                    );
+                  }
                   if (column.key === "side") {
                     return (
                       <td className="side-cell" data-side={bet.side} key={column.key}>
@@ -298,7 +328,13 @@ export function StatusTable({ bets, totalRows, generatedAt }: StatusTableProps) 
                   }
                   if (column.key === "pnlDollars") {
                     const pnlState =
-                      bet.status === "open" ? "open" : bet.pnlDollars > 0 ? "positive" : bet.pnlDollars < 0 ? "negative" : "flat";
+                      ["open", "pending_order", "partial_order"].includes(bet.status)
+                        ? "open"
+                        : bet.pnlDollars > 0
+                          ? "positive"
+                          : bet.pnlDollars < 0
+                            ? "negative"
+                            : "flat";
                     return (
                       <td className="numeric-cell pnl-cell" data-pnl={pnlState} key={column.key}>
                         {value}

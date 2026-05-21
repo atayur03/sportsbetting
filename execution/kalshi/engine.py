@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from kalshi import KalshiTrading
 from kalshi.markets.mlb_markets import get_market_anywhere
-from kalshi.trading.client import append_trade_log, build_order_payload, build_trade_log_row, utc_now_iso
+from kalshi.trading.order_log import append_trade_log, build_order_payload, build_trade_log_row, utc_now_iso
 from strategy import StrategyRun, WagerAction
 
 from execution.core.spec import ExecutionConfig, ExecutionResult, ExecutionTarget
+
+if TYPE_CHECKING:
+    from kalshi import KalshiTrading
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +29,7 @@ class KalshiExecutionEngine:
         self,
         targets: list[ExecutionTarget] | None = None,
         *,
-        trading: KalshiTrading | None = None,
+        trading: "KalshiTrading | None" = None,
         config: ExecutionConfig | None = None,
         simulation_trade_log_path: Path = DEFAULT_SIMULATED_TRADE_LOG_PATH,
     ):
@@ -35,9 +38,11 @@ class KalshiExecutionEngine:
         self.simulation_trade_log_path = simulation_trade_log_path
         self.targets_by_line_id = {target.line_id: target for target in targets or []}
 
-    def authenticated_trading(self) -> KalshiTrading:
+    def authenticated_trading(self) -> "KalshiTrading":
         """Return an authenticated trading client, loading env only when needed."""
         if self.trading is None:
+            from kalshi import KalshiTrading
+
             self.trading = KalshiTrading.from_env()
         return self.trading
 

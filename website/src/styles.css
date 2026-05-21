@@ -940,6 +940,33 @@ td {
   color: #1d4ed8;
 }
 
+.status-cell[data-status="pending_order"],
+.status-cell[data-status="resting"],
+.status-cell[data-status="unfilled"],
+.status-cell[data-status="none"] {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.status-cell[data-status="partial_order"],
+.status-cell[data-status="partially_filled"],
+.status-cell[data-status="partial"] {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.status-cell[data-status="filled"],
+.status-cell[data-status="settled"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-cell[data-status="canceled"],
+.status-cell[data-status="rejected"] {
+  background: #f1f5f9;
+  color: #475569;
+}
+
 .side-cell {
   text-transform: uppercase;
 }
@@ -1010,6 +1037,33 @@ td {
 .status-pill[data-status="open"] {
   background: #e0eefc;
   color: #1d4ed8;
+}
+
+.status-pill[data-status="pending_order"],
+.status-pill[data-status="resting"],
+.status-pill[data-status="unfilled"],
+.status-pill[data-status="none"] {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.status-pill[data-status="partial_order"],
+.status-pill[data-status="partially_filled"],
+.status-pill[data-status="partial"] {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.status-pill[data-status="filled"],
+.status-pill[data-status="settled"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-pill[data-status="canceled"],
+.status-pill[data-status="rejected"] {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .side-pill {

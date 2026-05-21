@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ DEFAULT_MARKET_LOOKUP_TIMEOUT = 8
 DEFAULT_MARKET_LOOKUP_RETRIES = 1
 
 OPEN_STATUSES = {"active", "open", "initialized", "paused"}
-UNRESOLVED_TRADE_STATUSES = {"", "open", "unknown"}
+UNRESOLVED_TRADE_STATUSES = {"", "open", "unknown", "pending_order", "partial_order"}
 
 TRADE_STATUS_COLUMNS = [
     "checked_time_utc",
@@ -56,6 +57,17 @@ TRADE_STATUS_COLUMNS = [
     "order_id",
     "client_order_id",
     "order_status",
+    "order_lifecycle_status",
+    "fill_status",
+    "position_status",
+    "market_settlement_status",
+    "initial_count",
+    "filled_count",
+    "remaining_count",
+    "avg_fill_price_dollars",
+    "filled_cost_dollars",
+    "order_created_time",
+    "order_last_update_time",
     "action",
     "side",
     "count",
@@ -170,7 +182,104 @@ def normalize_market_result(market: dict[str, Any]) -> str:
     return ""
 
 
-def trade_status(row: dict[str, Any], market: dict[str, Any] | None, lookup_error: str = "") -> str:
+def parse_number(value: Any) -> float:
+    if value in {None, ""}:
+        return 0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def order_response(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("order_response")
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(str(raw))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def nested_order_response(row: dict[str, Any]) -> dict[str, Any]:
+    response = order_response(row)
+    nested = response.get("order")
+    return nested if isinstance(nested, dict) else response
+
+
+def order_value(row: dict[str, Any], *keys: str) -> Any:
+    order = nested_order_response(row)
+    for key in keys:
+        if key in order and order[key] not in {None, ""}:
+            return order[key]
+    for key in keys:
+        if row.get(key) not in {None, ""}:
+            return row.get(key)
+    return ""
+
+
+def order_fill_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    initial_count = parse_number(order_value(row, "initial_count_fp", "count"))
+    filled_count = parse_number(order_value(row, "fill_count_fp", "filled_count"))
+    remaining_count = parse_number(order_value(row, "remaining_count_fp"))
+    if initial_count and not filled_count and not remaining_count:
+        status = str(order_value(row, "status", "order_status") or "").lower()
+        if status in {"filled", "executed"}:
+            filled_count = initial_count
+        elif status in {"resting", "open"}:
+            remaining_count = initial_count
+    if initial_count and filled_count and not remaining_count:
+        remaining_count = max(initial_count - filled_count, 0)
+
+    maker_cost = parse_number(order_value(row, "maker_fill_cost_dollars"))
+    taker_cost = parse_number(order_value(row, "taker_fill_cost_dollars"))
+    filled_cost = maker_cost + taker_cost
+    if filled_count and not filled_cost:
+        filled_cost = filled_count * parse_number(row.get("limit_price_dollars"))
+    avg_fill_price = filled_cost / filled_count if filled_count else 0
+
+    return {
+        "initial_count": initial_count,
+        "filled_count": filled_count,
+        "remaining_count": remaining_count,
+        "filled_cost_dollars": filled_cost,
+        "avg_fill_price_dollars": avg_fill_price,
+    }
+
+
+def order_lifecycle_status(row: dict[str, Any], metrics: dict[str, Any]) -> str:
+    status = str(order_value(row, "status", "order_status") or "").lower()
+    filled_count = parse_number(metrics.get("filled_count"))
+    remaining_count = parse_number(metrics.get("remaining_count"))
+    if status in {"rejected", "canceled", "cancelled"}:
+        return "canceled" if status == "cancelled" else status
+    if filled_count and remaining_count:
+        return "partially_filled"
+    if filled_count and not remaining_count:
+        return "filled"
+    if status in {"executed", "filled"}:
+        return "filled"
+    if status in {"resting", "open"}:
+        return "resting"
+    if status:
+        return status
+    return "submitted"
+
+
+def fill_status(metrics: dict[str, Any]) -> str:
+    filled_count = parse_number(metrics.get("filled_count"))
+    remaining_count = parse_number(metrics.get("remaining_count"))
+    if not filled_count:
+        return "unfilled"
+    if remaining_count:
+        return "partial"
+    return "filled"
+
+
+def market_settlement_status(row: dict[str, Any], market: dict[str, Any] | None, lookup_error: str = "") -> str:
     if lookup_error:
         return "unknown"
     if market is None:
@@ -179,7 +288,7 @@ def trade_status(row: dict[str, Any], market: dict[str, Any] | None, lookup_erro
     market_status = str(market.get("status") or "").lower()
     result = normalize_market_result(market)
     if market_status in OPEN_STATUSES or not result:
-        return "open"
+        return "unresolved"
 
     side = str(row.get("side") or "").lower()
     action = str(row.get("action") or "").lower()
@@ -194,6 +303,39 @@ def trade_status(row: dict[str, Any], market: dict[str, Any] | None, lookup_erro
     return "won" if side == winning_side else "lost"
 
 
+def position_status(fill_state: str, settlement_state: str) -> str:
+    if fill_state == "unfilled":
+        return "none"
+    if settlement_state in {"won", "lost"}:
+        return "settled"
+    return "open"
+
+
+def trade_status(
+    row: dict[str, Any],
+    market: dict[str, Any] | None,
+    lookup_error: str = "",
+    *,
+    metrics: dict[str, Any] | None = None,
+) -> str:
+    metrics = metrics or order_fill_metrics(row)
+    lifecycle = order_lifecycle_status(row, metrics)
+    fill_state = fill_status(metrics)
+    settlement_state = market_settlement_status(row, market, lookup_error)
+
+    if fill_state == "unfilled":
+        if lifecycle in {"canceled", "cancelled", "rejected"}:
+            return "canceled"
+        return "pending_order"
+    if settlement_state in {"won", "lost"}:
+        return settlement_state
+    if fill_state == "partial":
+        return "partial_order"
+    if settlement_state == "unknown":
+        return "unknown"
+    return "open"
+
+
 def build_status_row(
     row: dict[str, Any],
     *,
@@ -203,10 +345,13 @@ def build_status_row(
     lookup_error: str = "",
 ) -> dict[str, Any]:
     market = market or {}
+    metrics = order_fill_metrics(row)
+    fill_state = fill_status(metrics)
+    settlement_state = market_settlement_status(row, market, lookup_error)
     result = {
         "checked_time_utc": checked_time_utc,
         "engine": "kalshi",
-        "trade_status": trade_status(row, market, lookup_error),
+        "trade_status": trade_status(row, market, lookup_error, metrics=metrics),
         "strategy": row.get("strategy"),
         "sports_league": infer_sports_league(row, market),
         "placed_time_utc": row.get("placed_time_utc"),
@@ -215,6 +360,17 @@ def build_status_row(
         "order_id": row.get("order_id"),
         "client_order_id": row.get("client_order_id"),
         "order_status": row.get("order_status"),
+        "order_lifecycle_status": order_lifecycle_status(row, metrics),
+        "fill_status": fill_state,
+        "position_status": position_status(fill_state, settlement_state),
+        "market_settlement_status": settlement_state,
+        "initial_count": format_number(metrics["initial_count"]),
+        "filled_count": format_number(metrics["filled_count"]),
+        "remaining_count": format_number(metrics["remaining_count"]),
+        "avg_fill_price_dollars": format_dollars(metrics["avg_fill_price_dollars"]),
+        "filled_cost_dollars": format_dollars(metrics["filled_cost_dollars"]),
+        "order_created_time": order_value(row, "created_time"),
+        "order_last_update_time": order_value(row, "last_update_time"),
         "action": row.get("action"),
         "side": row.get("side"),
         "count": row.get("count"),
@@ -248,6 +404,17 @@ def build_status_row(
     if lookup_error:
         result["market_result"] = lookup_error
     return {column: result.get(column, "") for column in TRADE_STATUS_COLUMNS}
+
+
+def format_number(value: Any) -> str:
+    number = parse_number(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.4f}".rstrip("0").rstrip(".")
+
+
+def format_dollars(value: Any) -> str:
+    return f"{parse_number(value):.4f}"
 
 
 def build_trade_status_rows(

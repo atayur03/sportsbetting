@@ -4,6 +4,7 @@ import {
   EMPTY_FILTERS,
   formatDate,
   formatEngine,
+  formatStatus,
   formatStrategy,
   type FilterOptions,
   type StatusFilters,
@@ -100,7 +101,7 @@ function FilterLabel({
   if (variant === "status") {
     return (
       <span className="status-pill" data-status={value}>
-        {value}
+        {formatStatus(value)}
       </span>
     );
   }
@@ -232,6 +233,7 @@ export function StatusFilters({
             <FilterGroup
               label="Status"
               variant="status"
+              formatValue={formatStatus}
               values={options.statuses}
               excludeValues={filters.statusExclude}
               onToggle={(value) => onChange(toggleExcludedValue(filters, "statusExclude", value))}

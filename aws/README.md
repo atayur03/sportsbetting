@@ -276,6 +276,14 @@ Optional schedules can be created by deploying with:
 npm run deploy -- -c enableSchedules=true
 ```
 
+This creates two EventBridge schedules:
+
+- `HourlyRollingStatusRefreshSchedule`: runs on the hour and invokes
+  `RefreshTradeStatusFunction` three times, for today, yesterday, and two days
+  ago in `America/New_York`.
+- `HourlyStatusExportSchedule`: runs at 10 minutes past every hour and invokes
+  `ExportStatusJsonFunction` with `public/data/trade-status.json`.
+
 Lambda bundling uses the CDK Python 3.11 Docker image, so Docker needs to be
 available when you synth/deploy `LambdaSportsBettingStack`.
 

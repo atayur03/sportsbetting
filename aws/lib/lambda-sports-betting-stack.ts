@@ -38,11 +38,13 @@ export class LambdaSportsBettingStack extends Stack {
     const lambdaCode = lambda.Code.fromAsset("..", {
       bundling: {
         image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+        platform: "linux/arm64",
         command: [
           "bash",
           "-lc",
           [
             "python -m pip install -r aws/lambdas/requirements.txt -t /asset-output",
+            "test -f /asset-output/cryptography/hazmat/bindings/_rust.abi3.so",
             "mkdir -p /asset-output/aws /asset-output/execution /asset-output/kalshi /asset-output/strategy",
             "cp -R aws/helpers aws/lambdas aws/__init__.py /asset-output/aws/",
             "cp -R execution/cli execution/core execution/kalshi execution/schedules execution/__init__.py execution/interface.py /asset-output/execution/",
@@ -63,6 +65,7 @@ export class LambdaSportsBettingStack extends Stack {
 
     const statusFunction = new lambda.Function(this, "RefreshTradeStatusFunction", {
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.ARM_64,
       handler: "aws.lambdas.status.lambda_handler",
       code: lambdaCode,
       timeout: Duration.minutes(10),
@@ -72,6 +75,7 @@ export class LambdaSportsBettingStack extends Stack {
 
     const exportFunction = new lambda.Function(this, "ExportStatusJsonFunction", {
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.ARM_64,
       handler: "aws.lambdas.export_status_json.lambda_handler",
       code: lambdaCode,
       timeout: Duration.minutes(5),
@@ -81,6 +85,7 @@ export class LambdaSportsBettingStack extends Stack {
 
     const runStrategyFunction = new lambda.Function(this, "RunStrategyFunction", {
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.ARM_64,
       handler: "aws.lambdas.run_strategy.lambda_handler",
       code: lambdaCode,
       timeout: Duration.minutes(15),
@@ -97,15 +102,33 @@ export class LambdaSportsBettingStack extends Stack {
     kalshiSecret.grantRead(runStrategyFunction);
 
     if (this.node.tryGetContext("enableSchedules") === "true") {
-      const statusRule = new events.Rule(this, "DailyStatusRefreshSchedule", {
-        schedule: events.Schedule.cron({ minute: "0", hour: "10" }),
+      const hourlyStatusRule = new events.Rule(this, "HourlyRollingStatusRefreshSchedule", {
+        schedule: events.Schedule.cron({ minute: "0" }),
       });
-      statusRule.addTarget(new targets.LambdaFunction(statusFunction));
+      for (const offsetDays of [0, 1, 2]) {
+        hourlyStatusRule.addTarget(
+          new targets.LambdaFunction(statusFunction, {
+            event: events.RuleTargetInput.fromObject({
+              date_offset_days: offsetDays,
+              timezone: "America/New_York",
+              refresh_all: false,
+              market_lookup_timeout: 8,
+              market_lookup_retries: 1,
+            }),
+          }),
+        );
+      }
 
-      const exportRule = new events.Rule(this, "DailyStatusExportSchedule", {
-        schedule: events.Schedule.cron({ minute: "10", hour: "10" }),
+      const hourlyExportRule = new events.Rule(this, "HourlyStatusExportSchedule", {
+        schedule: events.Schedule.cron({ minute: "10" }),
       });
-      exportRule.addTarget(new targets.LambdaFunction(exportFunction));
+      hourlyExportRule.addTarget(
+        new targets.LambdaFunction(exportFunction, {
+          event: events.RuleTargetInput.fromObject({
+            output_key: "public/data/trade-status.json",
+          }),
+        }),
+      );
     }
 
     new CfnOutput(this, "RefreshTradeStatusFunctionName", {

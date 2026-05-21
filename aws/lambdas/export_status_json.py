@@ -26,6 +26,10 @@ SAFE_FIELDS = [
     "engine",
     "simulated",
     "status",
+    "orderLifecycleStatus",
+    "fillStatus",
+    "positionStatus",
+    "marketSettlementStatus",
     "strategy",
     "sport",
     "side",
@@ -68,9 +72,15 @@ def export_status_payload() -> dict[str, Any]:
 
 def sanitized_bet(row: dict[str, str], index: int, simulated: bool) -> dict[str, Any]:
     status = (row.get("trade_status") or "unknown").lower()
-    contracts = number_value(row.get("count"))
-    price_dollars = number_value(row.get("price_at_placement_dollars") or row.get("limit_price_dollars"))
-    stake_dollars = number_value(row.get("amount_dollars")) or contracts * price_dollars
+    filled_count = number_value(row.get("filled_count"))
+    submitted_count = number_value(row.get("count"))
+    contracts = filled_count
+    price_dollars = number_value(row.get("avg_fill_price_dollars")) or number_value(
+        row.get("price_at_placement_dollars") or row.get("limit_price_dollars")
+    )
+    stake_dollars = number_value(row.get("filled_cost_dollars"))
+    if not stake_dollars and status in {"open", "won", "lost"}:
+        stake_dollars = filled_count * price_dollars
     payout_dollars = contracts if status == "won" else 0
     pnl_dollars = payout_dollars - stake_dollars if status in {"won", "lost"} else 0
     record = {
@@ -81,6 +91,10 @@ def sanitized_bet(row: dict[str, str], index: int, simulated: bool) -> dict[str,
         "engine": row.get("engine") or "kalshi",
         "simulated": simulated,
         "status": status,
+        "orderLifecycleStatus": row.get("order_lifecycle_status") or row.get("order_status") or "",
+        "fillStatus": row.get("fill_status") or ("filled" if submitted_count and status in {"open", "won", "lost"} else "unfilled"),
+        "positionStatus": row.get("position_status") or ("open" if status == "open" else "settled" if status in {"won", "lost"} else "none"),
+        "marketSettlementStatus": row.get("market_settlement_status") or ("unresolved" if status in {"open", "pending_order", "partial_order"} else status),
         "strategy": row.get("strategy") or "unknown",
         "sport": row.get("sports_league") or "",
         "side": row.get("side") or "",
@@ -91,7 +105,7 @@ def sanitized_bet(row: dict[str, str], index: int, simulated: bool) -> dict[str,
         "pnlDollars": pnl_dollars,
         "marketTitle": row.get("title") or "",
         "marketSubtitle": row.get("subtitle") or row.get("yes_sub_title") or row.get("no_sub_title") or "",
-        "marketResult": row.get("market_result") or row.get("expiration_value") or ("open" if status == "open" else ""),
+        "marketResult": row.get("market_result") or row.get("expiration_value") or ("open" if status in {"open", "pending_order", "partial_order"} else ""),
         "marketStatus": row.get("market_status") or "",
     }
     return {field: record[field] for field in SAFE_FIELDS}
@@ -106,4 +120,3 @@ def number_value(value: str | None) -> float:
         return float(value or 0)
     except ValueError:
         return 0
-

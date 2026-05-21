@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from kalshi import KalshiMarkets
+from kalshi.markets.mlb_markets import list_active_mlb_markets
 from execution.core.spec import ExecutionTarget
 from strategy import MarketLine, SportsLeague
 
@@ -17,6 +17,11 @@ TOTAL_MARKET_PREFIXES = {
     "first5_total": "KXMLBF5TOTAL-",
     "team_total": "KXMLBTEAMTOTAL-",
 }
+
+
+class DefaultKalshiMarketsClient:
+    def list_active_mlb_markets(self) -> list[dict[str, Any]]:
+        return list_active_mlb_markets()
 
 
 def dollars_to_cents(value: Any) -> int | None:
@@ -159,7 +164,7 @@ def within_time_window(
 class KalshiMarketLineProvider:
     """Find Kalshi MLB submarkets and expose strategy-facing lines."""
 
-    markets_client: KalshiMarkets = field(default_factory=KalshiMarkets)
+    markets_client: Any = field(default_factory=DefaultKalshiMarketsClient)
     _targets_by_line_id: dict[str, ExecutionTarget] = field(default_factory=dict, init=False)
 
     def list_lines(
