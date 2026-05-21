@@ -6,6 +6,7 @@ import datetime as dt
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from aws.lambdas.run_strategy import load_kalshi_secret
 from execution.cli.status import refresh_trade_status_csvs_for_date
 
 
@@ -15,12 +16,15 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         timezone=timezone,
         offset_days=int(event.get("date_offset_days", 0)),
     )
+    if not bool(event.get("skip_order_updates", False)):
+        load_kalshi_secret()
     outputs = refresh_trade_status_csvs_for_date(
         run_date=run_date,
         timezone=timezone,
         refresh_only_unresolved=not bool(event.get("refresh_all", False)),
         market_lookup_timeout=int(event.get("market_lookup_timeout", 8)),
         market_lookup_retries=int(event.get("market_lookup_retries", 1)),
+        refresh_order_updates=not bool(event.get("skip_order_updates", False)),
     )
     return {"date": str(run_date), "outputs": outputs}
 

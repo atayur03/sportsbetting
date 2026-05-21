@@ -328,7 +328,7 @@ export function StatusTable({ bets, totalRows, generatedAt }: StatusTableProps) 
                   }
                   if (column.key === "pnlDollars") {
                     const pnlState =
-                      ["open", "pending_order", "partial_order"].includes(bet.status)
+                      ["open", "pending_order", "unfilled", "partial_order"].includes(bet.status)
                         ? "open"
                         : bet.pnlDollars > 0
                           ? "positive"

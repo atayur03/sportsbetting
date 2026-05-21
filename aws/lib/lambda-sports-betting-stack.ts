@@ -57,6 +57,7 @@ export class LambdaSportsBettingStack extends Stack {
 
     const commonEnvironment = {
       SPORTSBETTING_S3_BUCKET: bucketName,
+      KALSHI_SECRET_NAME: kalshiSecret.secretName,
     };
     const runStrategyEnvironment = {
       ...commonEnvironment,
@@ -99,6 +100,7 @@ export class LambdaSportsBettingStack extends Stack {
     dataBucket.grantReadWrite(runStrategyFunction, "private/*");
     dataBucket.grantReadWrite(runStrategyFunction, "public/data/*");
 
+    kalshiSecret.grantRead(statusFunction);
     kalshiSecret.grantRead(runStrategyFunction);
 
     if (this.node.tryGetContext("enableSchedules") === "true") {
@@ -111,7 +113,7 @@ export class LambdaSportsBettingStack extends Stack {
             event: events.RuleTargetInput.fromObject({
               date_offset_days: offsetDays,
               timezone: "America/New_York",
-              refresh_all: false,
+              refresh_all: true,
               market_lookup_timeout: 8,
               market_lookup_retries: 1,
             }),

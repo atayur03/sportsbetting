@@ -280,7 +280,8 @@ This creates two EventBridge schedules:
 
 - `HourlyRollingStatusRefreshSchedule`: runs on the hour and invokes
   `RefreshTradeStatusFunction` three times, for today, yesterday, and two days
-  ago in `America/New_York`.
+  ago in `America/New_York`. It uses `refresh_all: true` so order/fill
+  lifecycle fields are rehydrated from Kalshi every hour.
 - `HourlyStatusExportSchedule`: runs at 10 minutes past every hour and invokes
   `ExportStatusJsonFunction` with `public/data/trade-status.json`.
 

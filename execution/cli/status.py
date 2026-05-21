@@ -33,6 +33,47 @@ class KalshiMarkets:
         )
 
 
+class KalshiOrderUpdates:
+    def __init__(self):
+        self._trading = None
+        self._orders_by_id: dict[str, dict[str, Any]] | None = None
+        self._fills_by_order_id: dict[str, list[dict[str, Any]]] = {}
+
+    @property
+    def trading(self):
+        if self._trading is None:
+            from kalshi import KalshiTrading
+
+            self._trading = KalshiTrading.from_env()
+        return self._trading
+
+    def order_for_id(self, order_id: str) -> dict[str, Any]:
+        if not order_id:
+            return {}
+        if self._orders_by_id is None:
+            try:
+                payload = self.trading.get_order_history(limit=1000)
+                orders = payload.get("orders") if isinstance(payload, dict) else []
+            except Exception:
+                # Order history is helpful, but fill history by order_id is the
+                # source of truth for later fills. Do not fail the whole refresh
+                # just because the broad order listing is unavailable.
+                orders = []
+            self._orders_by_id = {
+                str(order.get("order_id") or order.get("id") or ""): order
+                for order in orders or []
+                if isinstance(order, dict)
+            }
+        return self._orders_by_id.get(order_id, {})
+
+    def fills_for_order_id(self, order_id: str) -> list[dict[str, Any]]:
+        if not order_id:
+            return []
+        if order_id not in self._fills_by_order_id:
+            self._fills_by_order_id[order_id] = self.trading.get_fill_history(order_id=order_id)
+        return self._fills_by_order_id[order_id]
+
+
 DEFAULT_TRADE_LOG_PATH = Path("kalshi/trading/data/real_trade_log.csv")
 DEFAULT_TRADE_STATUS_PATH = Path("execution/data/trade_status.csv")
 DEFAULT_TRADE_STATUS_DIR = Path("execution/data")
@@ -43,7 +84,7 @@ DEFAULT_MARKET_LOOKUP_TIMEOUT = 8
 DEFAULT_MARKET_LOOKUP_RETRIES = 1
 
 OPEN_STATUSES = {"active", "open", "initialized", "paused"}
-UNRESOLVED_TRADE_STATUSES = {"", "open", "unknown", "pending_order", "partial_order"}
+UNRESOLVED_TRADE_STATUSES = {"", "open", "unknown", "pending_order", "unfilled", "partial_order"}
 
 TRADE_STATUS_COLUMNS = [
     "checked_time_utc",
@@ -250,6 +291,56 @@ def order_fill_metrics(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def merge_order_updates(row: dict[str, Any], *, current_order: dict[str, Any], fills: list[dict[str, Any]]) -> dict[str, Any]:
+    if not current_order and not fills:
+        return row
+
+    merged = dict(row)
+    response = order_response(merged)
+    order = dict(response.get("order") if isinstance(response.get("order"), dict) else response)
+
+    if current_order:
+        order.update(current_order)
+
+    filled_count = sum(parse_number(fill.get("count_fp")) for fill in fills)
+    has_fill_updates = bool(fills)
+    if filled_count:
+        side = str(merged.get("side") or order.get("side") or order.get("outcome_side") or "").lower()
+        cost = sum(fill_cost_dollars(fill, side=side) for fill in fills)
+        latest_fill_time = max((str(fill.get("created_time") or "") for fill in fills), default="")
+        order["fill_count_fp"] = f"{filled_count:.2f}"
+        order["taker_fill_cost_dollars"] = f"{cost:.6f}"
+        if latest_fill_time:
+            order["last_update_time"] = max(str(order.get("last_update_time") or ""), latest_fill_time)
+
+    initial_count = parse_number(order.get("initial_count_fp") or merged.get("count"))
+    if initial_count:
+        filled_count = parse_number(order.get("fill_count_fp"))
+        remaining_count = parse_number(order.get("remaining_count_fp"))
+        if filled_count and (has_fill_updates or remaining_count == 0 or "remaining_count_fp" not in order):
+            remaining_count = max(initial_count - filled_count, 0)
+            order["remaining_count_fp"] = f"{remaining_count:.2f}"
+        if filled_count and remaining_count:
+            order["status"] = "partially_filled"
+        elif filled_count and not remaining_count:
+            order["status"] = "executed"
+
+    if order:
+        response["order"] = order
+        merged["order_response"] = json.dumps(response, sort_keys=True)
+        merged["order_status"] = order.get("status") or merged.get("order_status")
+    return merged
+
+
+def fill_cost_dollars(fill: dict[str, Any], *, side: str) -> float:
+    count = parse_number(fill.get("count_fp"))
+    price_field = "no_price_dollars" if side == "no" else "yes_price_dollars"
+    price = parse_number(fill.get(price_field))
+    if not price:
+        price = parse_number(fill.get("no_price_dollars") or fill.get("yes_price_dollars"))
+    return count * price
+
+
 def order_lifecycle_status(row: dict[str, Any], metrics: dict[str, Any]) -> str:
     status = str(order_value(row, "status", "order_status") or "").lower()
     filled_count = parse_number(metrics.get("filled_count"))
@@ -326,7 +417,7 @@ def trade_status(
     if fill_state == "unfilled":
         if lifecycle in {"canceled", "cancelled", "rejected"}:
             return "canceled"
-        return "pending_order"
+        return "unfilled"
     if settlement_state in {"won", "lost"}:
         return settlement_state
     if fill_state == "partial":
@@ -427,6 +518,7 @@ def build_trade_status_rows(
     refresh_only_unresolved: bool = True,
     market_lookup_timeout: int = DEFAULT_MARKET_LOOKUP_TIMEOUT,
     market_lookup_retries: int = DEFAULT_MARKET_LOOKUP_RETRIES,
+    order_updates: KalshiOrderUpdates | None = None,
 ) -> list[dict[str, Any]]:
     markets = markets or KalshiMarkets()
     checked_time_utc = checked_time_utc or utc_now_iso()
@@ -440,6 +532,24 @@ def build_trade_status_rows(
         if refresh_only_unresolved and existing_row and existing_trade_status not in UNRESOLVED_TRADE_STATUSES:
             status_rows.append({column: existing_row.get(column, "") for column in TRADE_STATUS_COLUMNS})
             continue
+
+        if order_updates is not None:
+            order_id = str(row.get("order_id") or "")
+            try:
+                row = merge_order_updates(
+                    row,
+                    current_order=order_updates.order_for_id(order_id),
+                    fills=order_updates.fills_for_order_id(order_id),
+                )
+            except Exception as exc:
+                if existing_row:
+                    preserved_row = {column: existing_row.get(column, "") for column in TRADE_STATUS_COLUMNS}
+                    preserved_row["checked_time_utc"] = checked_time_utc
+                    preserved_row["market_result"] = preserved_row.get("market_result") or f"order_update_error: {exc}"
+                    status_rows.append(preserved_row)
+                    continue
+                row = dict(row)
+                row["order_update_error"] = f"order_update_error: {exc}"
 
         ticker = str(row.get("ticker") or "")
         if ticker not in market_cache:
@@ -463,6 +573,8 @@ def build_trade_status_rows(
                 lookup_error=error,
             )
         )
+        if row.get("order_update_error"):
+            status_rows[-1]["market_result"] = row["order_update_error"]
 
     return status_rows
 
@@ -482,6 +594,7 @@ def refresh_trade_status_csv(
     refresh_only_unresolved: bool = True,
     market_lookup_timeout: int = DEFAULT_MARKET_LOOKUP_TIMEOUT,
     market_lookup_retries: int = DEFAULT_MARKET_LOOKUP_RETRIES,
+    refresh_order_updates: bool = True,
 ) -> list[dict[str, Any]]:
     trade_rows = read_trade_log(trade_log_path)
     if run_date is not None:
@@ -498,6 +611,7 @@ def refresh_trade_status_csv(
         refresh_only_unresolved=refresh_only_unresolved,
         market_lookup_timeout=market_lookup_timeout,
         market_lookup_retries=market_lookup_retries,
+        order_updates=KalshiOrderUpdates() if refresh_order_updates else None,
     )
     write_trade_status_csv(output_path, rows)
     return rows
@@ -510,6 +624,7 @@ def refresh_trade_status_csvs_for_date(
     refresh_only_unresolved: bool = True,
     market_lookup_timeout: int = DEFAULT_MARKET_LOOKUP_TIMEOUT,
     market_lookup_retries: int = DEFAULT_MARKET_LOOKUP_RETRIES,
+    refresh_order_updates: bool = True,
 ) -> list[dict[str, Any]]:
     """Refresh real and simulated date-scoped status CSVs when source logs exist."""
     outputs: list[dict[str, Any]] = []
@@ -538,6 +653,7 @@ def refresh_trade_status_csvs_for_date(
             refresh_only_unresolved=refresh_only_unresolved,
             market_lookup_timeout=market_lookup_timeout,
             market_lookup_retries=market_lookup_retries,
+            refresh_order_updates=refresh_order_updates and source["label"] == "real",
         )
         counts: dict[str, int] = {}
         for row in rows:
@@ -574,6 +690,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Refresh every row, including already won/lost rows. Defaults to unresolved rows only.",
     )
+    parser.add_argument(
+        "--skip-order-updates",
+        action="store_true",
+        help="Do not query Kalshi orders/fills while refreshing real trade status.",
+    )
     return parser.parse_args()
 
 
@@ -600,6 +721,7 @@ def main() -> None:
             refresh_only_unresolved=not args.refresh_all,
             market_lookup_timeout=args.market_lookup_timeout,
             market_lookup_retries=args.market_lookup_retries,
+            refresh_order_updates=not args.skip_order_updates,
         )
         print({"outputs": summaries})
         return
@@ -614,6 +736,7 @@ def main() -> None:
         refresh_only_unresolved=not args.refresh_all,
         market_lookup_timeout=args.market_lookup_timeout,
         market_lookup_retries=args.market_lookup_retries,
+        refresh_order_updates=not args.skip_order_updates,
     )
     output_path = args.output_path
     if output_path is None:

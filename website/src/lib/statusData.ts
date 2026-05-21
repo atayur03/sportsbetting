@@ -1,4 +1,4 @@
-export type TradeStatus = "pending_order" | "partial_order" | "open" | "won" | "lost" | "canceled" | "unknown" | string;
+export type TradeStatus = "unfilled" | "partial_order" | "open" | "won" | "lost" | "canceled" | "unknown" | string;
 
 export type StatusBet = {
   id: string;
@@ -191,7 +191,8 @@ export function formatStatus(value: string | null | undefined): string {
     return "";
   }
   const explicitLabels: Record<string, string> = {
-    pending_order: "Pending Order",
+    pending_order: "Unfilled",
+    unfilled: "Unfilled",
     partial_order: "Partial Order",
     open: "Open",
     won: "Won",
@@ -202,7 +203,6 @@ export function formatStatus(value: string | null | undefined): string {
     resting: "Resting",
     filled: "Filled",
     partially_filled: "Partially Filled",
-    unfilled: "Unfilled",
     partial: "Partial",
     none: "None",
     settled: "Settled",
