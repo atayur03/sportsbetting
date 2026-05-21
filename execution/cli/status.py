@@ -292,6 +292,7 @@ def order_fill_metrics(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def merge_order_updates(row: dict[str, Any], *, current_order: dict[str, Any], fills: list[dict[str, Any]]) -> dict[str, Any]:
+    fills = dedupe_fills(fills)
     if not current_order and not fills:
         return row
 
@@ -306,10 +307,12 @@ def merge_order_updates(row: dict[str, Any], *, current_order: dict[str, Any], f
     has_fill_updates = bool(fills)
     if filled_count:
         side = str(merged.get("side") or order.get("side") or order.get("outcome_side") or "").lower()
-        cost = sum(fill_cost_dollars(fill, side=side) for fill in fills)
+        maker_cost = sum(fill_cost_dollars(fill, side=side) for fill in fills if not is_taker_fill(fill))
+        taker_cost = sum(fill_cost_dollars(fill, side=side) for fill in fills if is_taker_fill(fill))
         latest_fill_time = max((str(fill.get("created_time") or "") for fill in fills), default="")
         order["fill_count_fp"] = f"{filled_count:.2f}"
-        order["taker_fill_cost_dollars"] = f"{cost:.6f}"
+        order["maker_fill_cost_dollars"] = f"{maker_cost:.6f}"
+        order["taker_fill_cost_dollars"] = f"{taker_cost:.6f}"
         if latest_fill_time:
             order["last_update_time"] = max(str(order.get("last_update_time") or ""), latest_fill_time)
 
@@ -332,6 +335,44 @@ def merge_order_updates(row: dict[str, Any], *, current_order: dict[str, Any], f
     return merged
 
 
+def dedupe_fills(fills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return fills with live/historical duplicates removed."""
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for fill in fills:
+        key = fill_identity(fill)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(fill)
+    return deduped
+
+
+def fill_identity(fill: dict[str, Any]) -> tuple[Any, ...]:
+    # Live and historical fill endpoints can expose the same economic fill with
+    # different endpoint-specific ids. Prefer the stable economic identity over
+    # fill_id so the same fill is not charged twice.
+    return (
+        "economic",
+        fill.get("order_id"),
+        fill.get("ticker"),
+        fill.get("market_ticker"),
+        fill.get("action"),
+        fill.get("side"),
+        fill.get("outcome_side"),
+        fill.get("book_side"),
+        normalized_number(fill.get("count_fp")),
+        normalized_number(fill.get("yes_price_dollars")),
+        normalized_number(fill.get("no_price_dollars")),
+        fill.get("subaccount_number"),
+        fill.get("created_time") or fill.get("ts"),
+    )
+
+
+def normalized_number(value: Any) -> str:
+    return f"{parse_number(value):.6f}"
+
+
 def fill_cost_dollars(fill: dict[str, Any], *, side: str) -> float:
     count = parse_number(fill.get("count_fp"))
     price_field = "no_price_dollars" if side == "no" else "yes_price_dollars"
@@ -339,6 +380,13 @@ def fill_cost_dollars(fill: dict[str, Any], *, side: str) -> float:
     if not price:
         price = parse_number(fill.get("no_price_dollars") or fill.get("yes_price_dollars"))
     return count * price
+
+
+def is_taker_fill(fill: dict[str, Any]) -> bool:
+    value = fill.get("is_taker")
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y"}
 
 
 def order_lifecycle_status(row: dict[str, Any], metrics: dict[str, Any]) -> str:

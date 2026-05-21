@@ -75,12 +75,13 @@ def sanitized_bet(row: dict[str, str], index: int, simulated: bool) -> dict[str,
     filled_count = number_value(row.get("filled_count"))
     submitted_count = number_value(row.get("count"))
     contracts = filled_count
-    price_dollars = number_value(row.get("avg_fill_price_dollars")) or number_value(
+    fallback_price_dollars = number_value(row.get("avg_fill_price_dollars")) or number_value(
         row.get("price_at_placement_dollars") or row.get("limit_price_dollars")
     )
     stake_dollars = number_value(row.get("filled_cost_dollars"))
     if not stake_dollars and status in {"open", "won", "lost"}:
-        stake_dollars = filled_count * price_dollars
+        stake_dollars = filled_count * fallback_price_dollars
+    price_dollars = price_from_stake(stake_dollars, contracts) or fallback_price_dollars
     payout_dollars = contracts if status == "won" else 0
     pnl_dollars = payout_dollars - stake_dollars if status in {"won", "lost"} else 0
     record = {
@@ -120,3 +121,9 @@ def number_value(value: str | None) -> float:
         return float(value or 0)
     except ValueError:
         return 0
+
+
+def price_from_stake(stake_dollars: float, contracts: float) -> float:
+    if not contracts:
+        return 0
+    return stake_dollars / contracts

@@ -88,6 +88,83 @@ def test_later_fill_rehydrates_contracts_and_stake():
     assert status["avg_fill_price_dollars"] == "0.6500"
 
 
+def test_duplicate_live_and_historical_fill_is_counted_once():
+    row = merge_order_updates(
+        base_resting_order_row(),
+        current_order={},
+        fills=[
+            {
+                "fill_id": "fill-1",
+                "source": "live",
+                "count_fp": "1.00",
+                "no_price_dollars": "0.8000",
+                "created_time": "2026-05-20T01:00:00Z",
+            },
+            {
+                "fill_id": "different-endpoint-id",
+                "source": "historical",
+                "count_fp": "1.00",
+                "no_price_dollars": "0.8000",
+                "created_time": "2026-05-20T01:00:00Z",
+            },
+        ],
+    )
+    status = status_for(row)
+
+    assert status["filled_count"] == "1"
+    assert status["remaining_count"] == "6"
+    assert status["filled_cost_dollars"] == "0.8000"
+    assert status["avg_fill_price_dollars"] == "0.8000"
+
+
+def test_maker_fill_replaces_existing_maker_cost_without_double_counting():
+    row = merge_order_updates(
+        base_resting_order_row(),
+        current_order={
+            "maker_fill_cost_dollars": "0.800000",
+            "taker_fill_cost_dollars": "0.000000",
+        },
+        fills=[
+            {
+                "fill_id": "maker-fill-1",
+                "count_fp": "1.00",
+                "no_price_dollars": "0.8000",
+                "is_taker": False,
+                "created_time": "2026-05-20T01:00:00Z",
+            },
+        ],
+    )
+    status = status_for(row)
+
+    assert status["filled_count"] == "1"
+    assert status["filled_cost_dollars"] == "0.8000"
+    assert status["avg_fill_price_dollars"] == "0.8000"
+
+
+def test_taker_fill_replaces_existing_taker_cost_without_double_counting():
+    row = merge_order_updates(
+        base_resting_order_row(),
+        current_order={
+            "maker_fill_cost_dollars": "0.000000",
+            "taker_fill_cost_dollars": "0.800000",
+        },
+        fills=[
+            {
+                "fill_id": "taker-fill-1",
+                "count_fp": "1.00",
+                "no_price_dollars": "0.8000",
+                "is_taker": True,
+                "created_time": "2026-05-20T01:00:00Z",
+            },
+        ],
+    )
+    status = status_for(row)
+
+    assert status["filled_count"] == "1"
+    assert status["filled_cost_dollars"] == "0.8000"
+    assert status["avg_fill_price_dollars"] == "0.8000"
+
+
 def test_partial_fill_rehydrates_partial_order():
     row = merge_order_updates(
         base_resting_order_row(),
