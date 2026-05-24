@@ -270,13 +270,7 @@ Manager and manually replace the placeholder JSON with:
 
 Then invoke with `"live": true` instead of `"simulate": true`.
 
-Optional schedules can be created by deploying with:
-
-```bash
-npm run deploy -- -c enableSchedules=true
-```
-
-This creates two EventBridge schedules:
+The Lambda stack always creates two EventBridge schedules:
 
 - `HourlyRollingStatusRefreshSchedule`: runs on the hour and invokes
   `RefreshTradeStatusFunction` three times, for today, yesterday, and two days
@@ -284,6 +278,18 @@ This creates two EventBridge schedules:
   lifecycle fields are rehydrated from Kalshi every hour.
 - `HourlyStatusExportSchedule`: runs at 10 minutes past every hour and invokes
   `ExportStatusJsonFunction` with `public/data/trade-status.json`.
+- `DailySimulatedUnderdogStrategySchedule`: runs at 09:00 UTC every day and
+  invokes `RunStrategyFunction` for today's simulated `underdog` strategy with
+  `stake_cents: 500` and `max_order_stake_cents: 500`.
+- `DailySimulatedGameTotalUnderStrategySchedule`: runs at 09:00 UTC every day
+  and invokes `RunStrategyFunction` for today's simulated `game_total_under`
+  strategy with `stake_cents: 500` and `max_order_stake_cents: 500`.
+- `DailyLiveUnderdogStrategySchedule`: runs at 09:00 UTC every day and invokes
+  `RunStrategyFunction` for today's live `underdog` strategy with
+  `stake_cents: 500` and `max_order_stake_cents: 500`.
+- `DailyLiveGameTotalUnderStrategySchedule`: runs at 09:00 UTC every day and
+  invokes `RunStrategyFunction` for today's live `game_total_under` strategy
+  with `stake_cents: 500` and `max_order_stake_cents: 500`.
 
 Lambda bundling uses the CDK Python 3.11 Docker image, so Docker needs to be
 available when you synth/deploy `LambdaSportsBettingStack`.

@@ -103,31 +103,83 @@ export class LambdaSportsBettingStack extends Stack {
     kalshiSecret.grantRead(statusFunction);
     kalshiSecret.grantRead(runStrategyFunction);
 
-    if (this.node.tryGetContext("enableSchedules") === "true") {
-      const hourlyStatusRule = new events.Rule(this, "HourlyRollingStatusRefreshSchedule", {
-        schedule: events.Schedule.cron({ minute: "0" }),
-      });
-      for (const offsetDays of [0, 1, 2]) {
-        hourlyStatusRule.addTarget(
-          new targets.LambdaFunction(statusFunction, {
-            event: events.RuleTargetInput.fromObject({
-              date_offset_days: offsetDays,
-              timezone: "America/New_York",
-              refresh_all: true,
-              market_lookup_timeout: 8,
-              market_lookup_retries: 1,
-            }),
-          }),
-        );
-      }
-
-      const hourlyExportRule = new events.Rule(this, "HourlyStatusExportSchedule", {
-        schedule: events.Schedule.cron({ minute: "10" }),
-      });
-      hourlyExportRule.addTarget(
-        new targets.LambdaFunction(exportFunction, {
+    const hourlyStatusRule = new events.Rule(this, "HourlyRollingStatusRefreshSchedule", {
+      schedule: events.Schedule.cron({ minute: "0" }),
+    });
+    for (const offsetDays of [0, 1, 2]) {
+      hourlyStatusRule.addTarget(
+        new targets.LambdaFunction(statusFunction, {
           event: events.RuleTargetInput.fromObject({
-            output_key: "public/data/trade-status.json",
+            date_offset_days: offsetDays,
+            timezone: "America/New_York",
+            refresh_all: true,
+            market_lookup_timeout: 8,
+            market_lookup_retries: 1,
+          }),
+        }),
+      );
+    }
+
+    const hourlyExportRule = new events.Rule(this, "HourlyStatusExportSchedule", {
+      schedule: events.Schedule.cron({ minute: "10" }),
+    });
+    hourlyExportRule.addTarget(
+      new targets.LambdaFunction(exportFunction, {
+        event: events.RuleTargetInput.fromObject({
+          output_key: "public/data/trade-status.json",
+        }),
+      }),
+    );
+
+    const dailySimulatedStrategies: Array<{ id: string; strategy: string }> = [
+      { id: "Underdog", strategy: "underdog" },
+      { id: "GameTotalUnder", strategy: "game_total_under" },
+    ];
+    for (const scheduledStrategy of dailySimulatedStrategies) {
+      const rule = new events.Rule(this, `DailySimulated${scheduledStrategy.id}StrategySchedule`, {
+        schedule: events.Schedule.cron({ minute: "0", hour: "9" }),
+      });
+      rule.addTarget(
+        new targets.LambdaFunction(runStrategyFunction, {
+          event: events.RuleTargetInput.fromObject({
+            window: "daily",
+            engine: "kalshi",
+            strategy: scheduledStrategy.strategy,
+            timezone: "America/New_York",
+            stake_cents: 500,
+            max_order_stake_cents: 500,
+            simulate: true,
+            live: false,
+            skip_status_refresh: false,
+            status_market_lookup_timeout: 8,
+            status_market_lookup_retries: 1,
+          }),
+        }),
+      );
+    }
+
+    const dailyLiveStrategies: Array<{ id: string; strategy: string }> = [
+      { id: "Underdog", strategy: "underdog" },
+      { id: "GameTotalUnder", strategy: "game_total_under" },
+    ];
+    for (const scheduledStrategy of dailyLiveStrategies) {
+      const rule = new events.Rule(this, `DailyLive${scheduledStrategy.id}StrategySchedule`, {
+        schedule: events.Schedule.cron({ minute: "0", hour: "9" }),
+      });
+      rule.addTarget(
+        new targets.LambdaFunction(runStrategyFunction, {
+          event: events.RuleTargetInput.fromObject({
+            window: "daily",
+            engine: "kalshi",
+            strategy: scheduledStrategy.strategy,
+            timezone: "America/New_York",
+            stake_cents: 500,
+            max_order_stake_cents: 500,
+            simulate: false,
+            live: true,
+            skip_status_refresh: false,
+            status_market_lookup_timeout: 8,
+            status_market_lookup_retries: 1,
           }),
         }),
       );
